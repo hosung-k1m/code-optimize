@@ -1,0 +1,36 @@
+_ > nanoagent.plugin.v0001.ManifestConfig:
+id: code-optimize
+name: Code Optimize
+version: 0.1.0
+status: in-development
+spec: nanoagent.plugin/v0001
+
+runtime > nanoagent.plugin.v0001.RuntimeConfig:
+  type: mcp_stdio
+  command: [uv, run, --frozen, python, -m, plugin]
+
+permissions > nanoagent.plugin.v0001.PermissionsConfig:
+  network > nanoagent.plugin.v0001.NetworkConfig:
+    hosts: []
+  filesystem > nanoagent.plugin.v0001.FilesystemConfig:
+    write: [workspace]
+
+tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
+  describe_problem:
+    description: Read a bundled or workspace problem, its baseline and exact benchmark policy
+  evaluate_code:
+    description: Execute Python source against the baseline and measure exact correctness and elapsed-time speedup
+
+tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
+  describe-problem:
+    description: Describe a supported optimization problem
+    runner: tool
+    tools: [describe_problem]
+    reference: null
+    instructions: Read the explicitly selected problem bundle and report its interface, baseline, cases and policy.
+  evaluate-code:
+    description: Evaluate an optimized Python implementation
+    runner: tool
+    tools: [evaluate_code]
+    reference: null
+    instructions: Evaluate the supplied source against the selected bundle. Return the measured report, including failures, unchanged. Use its deterministic verdict to guide revisions.

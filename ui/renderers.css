@@ -1,0 +1,9 @@
+section { color: var(--text); }
+table { width: 100%; border-collapse: collapse; margin-block: 1rem; }
+th, td { text-align: left; border-bottom: 1px solid var(--border); padding: .5rem; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+p { overflow-wrap: anywhere; }
+details { margin-block: 1rem; }
+
+.measurements { overflow-x: auto; max-width: 100%; }
+.measurements table { min-width: 32rem; }

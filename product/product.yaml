@@ -1,0 +1,11 @@
+_ > nanoagent.plugin.v0001.ProductConfig:
+tagline: Measure Python optimizations against a reproducible baseline
+summary: Supply a problem bundle and candidate Python source. Receive exact output comparisons, fresh-process elapsed-time measurements and a deterministic acceptance verdict on your current machine.
+highlights:
+  - Exact output bytes and transparent per-case evidence
+  - Reusable problem bundles with explicit policies
+  - Guarded execution and bounded retained diagnostics
+steps:
+  - Describe a bundled or workspace problem
+  - Write a solve function using its documented file interface
+  - Evaluate, inspect correctness and timing, then revise

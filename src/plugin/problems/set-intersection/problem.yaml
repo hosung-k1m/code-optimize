@@ -1,0 +1,27 @@
+_ > contract.ProblemConfig:
+schema_version: 1
+id: set-intersection
+prompt: prompt.md
+baseline: baseline.py
+execution:
+  runtime: plugin_python
+  interface: solve_directory_v1
+  per_trial_timeout_seconds: 2.0
+  total_timeout_seconds: 60.0
+  max_source_bytes: 262144
+  max_output_bytes: 1048576
+  max_log_bytes: 65536
+measurement:
+  metric: wall_time
+  warmup_pairs: 1
+  measured_pairs: 5
+  order: alternating
+policy:
+  minimum_speedup: 1.10
+  maximum_case_slowdown: 1.05
+  maximum_relative_mad: 0.10
+cases:
+  - id: balanced
+    input_dir: fixtures/balanced
+  - id: overlap
+    input_dir: fixtures/overlap
