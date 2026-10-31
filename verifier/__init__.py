@@ -2,13 +2,31 @@
 
 from pathlib import Path
 
-from contract import DescribeInput, DescribeOutput, EvaluateInput, EvaluateOutput, Task, Tool
+from contract import (
+    DescribeInput,
+    DescribeOutput,
+    EvaluateInput,
+    EvaluateOutput,
+    ListProblemsInput,
+    ListProblemsOutput,
+    ProblemListing,
+    ProblemReference,
+    Task,
+    Tool,
+)
 
-from .checks import result, valid_runtime, validate_config_values, validate_evaluation
+from .checks import result, valid_runtime, validate_config_values, validate_evaluation, validate_project
 
 
 def verify_input(tool, value):
     name = Tool(tool)
+    if name is Tool.LIST_PROBLEMS:
+        return result(
+            isinstance(value, ListProblemsInput),
+            "problem listing input is valid"
+            if isinstance(value, ListProblemsInput)
+            else "tool input does not match the declared tool",
+        )
     if (
         name is Tool.DESCRIBE_PROBLEM
         and isinstance(value, DescribeInput)
@@ -31,12 +49,39 @@ def verify_input(tool, value):
         or "\\" in reference.directory
     ):
         return result(False, "problem directory must stay within its selected origin")
-    if isinstance(value, EvaluateInput) and (not value.source or len(value.source.encode("utf-8")) > 1024 * 1024):
-        return result(False, "candidate source is empty or exceeds the supported source limit")
+    if isinstance(value, EvaluateInput):
+        try:
+            validate_project(value.project, 1024 * 1024)
+        except (ValueError, TypeError, AttributeError):
+            return result(False, "candidate project is invalid")
     return result(True, "tool input is valid")
 
 
 def verify_output(tool, input_value, output_value, workspace):
+    if Tool(tool) is Tool.LIST_PROBLEMS:
+        if not isinstance(input_value, ListProblemsInput) or not isinstance(output_value, ListProblemsOutput):
+            return result(False, "problem listing does not match its contract")
+        seen = set()
+        for item in output_value.problems:
+            if (
+                not isinstance(item, ProblemListing)
+                or not isinstance(item.description, str)
+                or not item.description.strip()
+            ):
+                return result(False, "problem listing contains an invalid description")
+            reference = item.reference
+            if not isinstance(reference, ProblemReference) or reference.origin not in ("bundled", "workspace"):
+                return result(False, "problem listing contains an invalid origin")
+            directory = reference.directory
+            if not isinstance(directory, str) or not directory or "\\" in directory or "\x00" in directory:
+                return result(False, "problem listing contains an invalid directory")
+            if Path(directory).is_absolute() or any(part in ("", ".", "..") for part in directory.split("/")):
+                return result(False, "problem listing contains an invalid directory")
+            key = (reference.origin, directory)
+            if key in seen:
+                return result(False, "problem listing contains duplicate references")
+            seen.add(key)
+        return result(True, "problem listing is valid")
     if Tool(tool) is Tool.DESCRIBE_PROBLEM:
         if not isinstance(input_value, DescribeInput) or not isinstance(output_value, DescribeOutput):
             return result(False, "describe-problem output does not match its contract")
@@ -59,7 +104,7 @@ def verify_output(tool, input_value, output_value, workspace):
     try:
         if output_value.problem != input_value.problem:
             return result(False, "assessment does not match the requested problem reference")
-        valid, message = validate_evaluation(output_value, workspace, input_value.source)
+        valid, message = validate_evaluation(output_value, workspace, input_value.project)
     except (OSError, ValueError, StopIteration, TypeError):
         return result(False, "evaluation artifacts or evidence are invalid")
     return result(valid, message)
@@ -67,6 +112,8 @@ def verify_output(tool, input_value, output_value, workspace):
 
 def verify_task(task, arguments, output, reference, workspace):
     task_name = Task(task)
+    if task_name is Task.LIST_PROBLEMS:
+        return verify_output(Tool.LIST_PROBLEMS, arguments, output, workspace)
     if task_name is Task.DESCRIBE_PROBLEM:
         if not isinstance(arguments, DescribeInput) or not isinstance(output, DescribeOutput):
             return result(False, "problem description output is invalid")
@@ -78,7 +125,7 @@ def verify_task(task, arguments, output, reference, workspace):
     try:
         if output.problem != arguments.problem:
             return result(False, "assessment does not match the requested problem reference")
-        valid, message = validate_evaluation(output, workspace, arguments.source)
+        valid, message = validate_evaluation(output, workspace, arguments.project)
     except (OSError, ValueError, StopIteration, TypeError):
         return result(False, "evaluation artifacts or evidence are invalid")
     if not valid:

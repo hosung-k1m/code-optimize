@@ -6,7 +6,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from contract import ProblemConfig, ProblemReference
+from contract import ListProblemsOutput, ProblemConfig, ProblemListing, ProblemReference
 from plugin.config import load_problem_config
 
 
@@ -114,9 +114,10 @@ def load_problem(reference: ProblemReference, workspace: Path) -> ProblemBundle:
     for part in rel.parts:
         cursor = cursor / part
         if cursor.is_symlink() or not cursor.is_dir():
-            raise ValueError(f"problem directory does not exist at selected origin: {reference.origin}/{reference.directory}")
-    if not root.is_dir():
-        raise ValueError(f"problem directory does not exist at selected origin: {reference.origin}/{reference.directory}")
+            raise ValueError(
+                f"problem directory does not exist at selected origin: {reference.origin}/{reference.directory}; "
+                "call list_problems for exact references (workspace paths are relative to the plugin workspace)"
+            )
     inventory = _inventory(root)
     try:
         config_bytes = inventory["problem.yaml"]
@@ -136,7 +137,10 @@ def load_problem(reference: ProblemReference, workspace: Path) -> ProblemBundle:
     fixture_dirs = [_relative(case.input_dir).as_posix() for case in config.cases]
     declared_files = {"problem.yaml", config.prompt, config.baseline}
     for fixture_dir in fixture_dirs:
-        if any(path == fixture_dir or path.startswith(fixture_dir + "/") or fixture_dir.startswith(path + "/") for path in declared_files):
+        if any(
+            path == fixture_dir or path.startswith(fixture_dir + "/") or fixture_dir.startswith(path + "/")
+            for path in declared_files
+        ):
             raise ValueError(f"fixture directory conflicts with a declared file: {fixture_dir}")
     for index, fixture_dir in enumerate(fixture_dirs):
         if any(
@@ -161,7 +165,7 @@ def load_problem(reference: ProblemReference, workspace: Path) -> ProblemBundle:
         prefix = fixture_root.as_posix() + "/"
         for path, content in inventory.items():
             if path.startswith(prefix):
-                case_files[path[len(prefix):]] = content
+                case_files[path[len(prefix) :]] = content
                 used.add(path)
         if not case_files:
             raise ValueError(f"case {case.id} has no fixture files")
@@ -179,3 +183,27 @@ def load_problem(reference: ProblemReference, workspace: Path) -> ProblemBundle:
     if evidence_bound > 64 * 1024 * 1024:
         raise ValueError("snapshot and maximum assessment evidence exceed the 64 MiB report budget")
     return ProblemBundle(reference, config, config_bytes, prompt, baseline, fixture_snapshots)
+
+
+def discover_problems(workspace: Path) -> ListProblemsOutput:
+    """Discover problem.yaml directories under each explicit origin."""
+    listings = []
+    for origin, base in (("bundled", Path(__file__).parent / "problems"), ("workspace", workspace)):
+        if base.is_symlink() or not base.is_dir():
+            raise ValueError(f"problem origin is not a real directory: {origin}")
+        for current, dirs, files in os.walk(base, followlinks=False):
+            dirs[:] = sorted(name for name in dirs if not (Path(current) / name).is_symlink())
+            directory = Path(current).relative_to(base).as_posix()
+            if origin == "workspace" and directory == ".":
+                dirs[:] = [name for name in dirs if name != "assessments"]
+            if directory == "." or "problem.yaml" not in files:
+                continue
+            reference = ProblemReference(origin, directory)
+            bundle = load_problem(reference, workspace)
+            description = bundle.prompt.decode("utf-8").strip()
+            listings.append(ProblemListing(reference, description))
+    return ListProblemsOutput(listings)
+
+
+async def list_problems(_value, workspace: Path) -> ListProblemsOutput:
+    return discover_problems(workspace)

@@ -12,7 +12,7 @@ from pathlib import Path
 import anyio
 import yaml
 
-from plugin.process_control import require_supported_platform
+from plugin.process_control import execution_environment, require_supported_platform
 
 
 @dataclass(frozen=True)
@@ -37,19 +37,25 @@ def _write_config(path: Path, type_path: str, values: dict[str, object]) -> None
 
 
 async def run_trial(
-    directory: Path, timeout_seconds: float, max_output_bytes: int, max_log_bytes: int
+    directory: Path,
+    timeout_seconds: float,
+    max_output_bytes: int,
+    max_log_bytes: int,
+    command: list[str] | None = None,
+    project_dir: Path | None = None,
+    prepare: bool = False,
 ) -> ExecutionResult:
-    """Run staged source.py in a fresh worker owned by an EOF lifetime guard.
+    """Run project argv, or an internal solve probe, under an EOF lifetime guard.
 
-    `directory` must contain source.py and inputs/; run.yaml is generated here. Timing includes guard
-    startup, worker execution, and confirmed cleanup.
+    The directory holds inputs/ and generated control files. Internal probes also
+    supply source.py. Timing includes guard startup, execution and confirmed cleanup.
     """
     require_supported_platform()
     directory = directory.resolve(strict=True)
     if timeout_seconds <= 0 or max_output_bytes < 0 or max_log_bytes < 0:
         raise ValueError("timeouts and output limits must be positive/nonnegative")
-    if not (directory / "source.py").is_file() or not (directory / "inputs").is_dir():
-        raise ValueError("trial directory must contain source.py and inputs/")
+    if (command is None and not (directory / "source.py").is_file()) or not (directory / "inputs").is_dir():
+        raise ValueError("trial directory must contain inputs/ and a command or probe source.py")
     _write_config(
         directory / "run.yaml",
         "plugin.worker.WorkerConfig",
@@ -57,6 +63,8 @@ async def run_trial(
             "source": "source.py",
             "input_dir": "inputs",
             "output_path": "result.bin",
+            "command": command,
+            "project_dir": str(project_dir or directory),
         },
     )
     read_fd, write_fd = os.pipe()
@@ -73,6 +81,9 @@ async def run_trial(
             "lifetime_fd": read_fd,
         },
     )
+    environment = execution_environment()
+    if prepare:
+        environment.update(UV_OFFLINE="0", UV_NO_SYNC="0")
     start = time.perf_counter_ns()
     guard = None
     try:
@@ -86,7 +97,7 @@ async def run_trial(
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
-                env={k: v for k, v in os.environ.items() if k in {"PATH", "HOME", "TMPDIR", "TEMP"}},
+                env=environment,
                 start_new_session=True,
                 pass_fds=(read_fd,),
             )
@@ -269,7 +280,8 @@ async def probe_runtime(workspace: Path) -> None:
         (lost / "inputs").mkdir(parents=True)
         (lost / "source.py").write_text(
             "import os, time\nfrom pathlib import Path\ndef solve(i, o):\n "
-            "marker = Path(i) / 'heartbeat'\n (Path(i) / 'worker.pid').write_text(str(os.getpid()))\n "
+            "marker = Path(i) / 'heartbeat'\n pid = Path(i) / 'worker.pid'\n "
+            "pid.with_suffix('.tmp').write_text(str(os.getpid()))\n pid.with_suffix('.tmp').replace(pid)\n "
             "while True:\n  with marker.open('a') as f: f.write('x')\n  time.sleep(0.02)\n",
             encoding="utf-8",
         )
@@ -277,7 +289,6 @@ async def probe_runtime(workspace: Path) -> None:
             "import asyncio, pathlib; from plugin.execution import run_trial; "
             f"asyncio.run(run_trial(pathlib.Path({str(lost)!r}), 20, 64, 4096))"
         )
-        evaluator_env = {k: v for k, v in os.environ.items() if k in {"PATH", "HOME", "TMPDIR", "TEMP"}}
         with anyio.CancelScope(shield=True):
             evaluator = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -285,7 +296,7 @@ async def probe_runtime(workspace: Path) -> None:
                 "-c",
                 evaluator_code,
                 cwd=lost,
-                env=evaluator_env,
+                env=execution_environment(),
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,

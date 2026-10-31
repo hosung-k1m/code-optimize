@@ -1,5 +1,5 @@
 _ > __main__.PreviewConfig:
 host: 127.0.0.1
 port: 8179
-evidence_directory: ../code-optimize-local-test-evidence
+evidence_directory: ../code-optimize-v020-desktop-evidence
 kit_directory: ../nanoagent/nanoagent/src/nanoagent/plugin/v0001/page/kit

@@ -1,40 +1,71 @@
 # Code Optimize release checks
 
-`code-optimize` is a ready `nanoagent.plugin/v0001` plugin for macOS. The deterministic verifier determines assessment outcomes. A human or model does not adjudicate candidate correctness.
+Version 0.2.0 uses C++17 baselines and typed, multilingual candidate projects.
+Deterministic code checks every result, artifact and acceptance threshold.
 
-Run unit/integration tests and lint from the plugin root:
+From the plugin root:
 
 ```bash
 uv sync --extra dev
 uv run pytest
 uv run ruff check .
+uv lock --check
 ```
 
-[release_check.py](release_check.py) is a deterministic installed-package harness. Run it from the plugin root with the installed RUSH Lab engine's Python:
+Build the regular **RUSH Lab** desktop app from the NanoAgent checkout with
+`npm --prefix helpinghands run desktop`, install/open that build, and run
+[release_check.py](release_check.py) with its installed engine's Python from the
+plugin root. Use the engine path shown in the app's startup log under
+`~/Library/Application Support/lab.mochi.lab/app/<stamp>/mochi-lab/nanoagent/.venv/bin/python`.
+Local validation for this project uses RUSH Lab, as requested by its owner.
 
-```bash
-/path/to/RUSH-Lab/engine/nanoagent/.venv/bin/python tests/release_check.py
-```
+The settings in [release.yaml](release.yaml) select a new evidence directory
+outside the checkout, the outer deadline and a pinned dependency. Preserve each
+previous evidence folder before running again. The harness packs and inspects
+the plugin, installs through NanoAgent's normal installer, enables macOS Seatbelt,
+and invokes real MCP tasks and the restricted verifier. It checks:
 
-Use the actual installed engine path on this computer. It packs and inspects the plugin, installs locked dependencies with NanoAgent's normal installer, enables macOS Seatbelt, and invokes actual tool-runner tasks and the restricted verifier. Its settings are in [release.yaml](release.yaml); its output directory must be new and outside the source checkout so uv does not discover that checkout as an ancestor project. Preserve previous evidence before another run.
+- Discovery and descriptions of all three bundled problems, plus a workspace bundle.
+- Wrong and crashing submissions with deterministic rejection and intact reports.
+- Python and JavaScript graph candidates against the compiled C++ baseline.
+- A separate Python virtual environment, installing a pinned package using uv
+  through the sandbox's declared package proxy.
+- Exact output bytes, paired timing policy, and rejection of altered evidence.
 
-The harness checks both bundled problems, exact matching output, wrong/crashing candidates, describe/evaluate/revise feedback, workspace bundle staging, artifact hashes, repeated verification, guarded algorithm controls, timeout/log limits, cancellation, and a large report. Correct output and speed measurements are separate assertions. Timing controls record full assessment outcomes; no unsuccessful assessment reruns to obtain a pass. An optimized submission can fail the stability gate.
+The returned reports include source and fixture snapshots, compiler version and
+build argv/log artifacts, runtime tool paths, raw timing samples and policy
+outcomes. A passing correctness check alone does not imply a speedup. Preserve
+failed timing outcomes; do not rerun merely to obtain a pass.
 
-[renderer_preview.py](renderer_preview.py) serves actual renderers and kit assets with recorded installed evidence; [renderer_preview.yaml](renderer_preview.yaml) selects those local paths. It supports visual inspection of the same returned report without invoking a model.
+[renderer_preview.py](renderer_preview.py) serves the actual result renderers
+using the recorded installed evidence. Its YAML selects evidence and kit paths.
+After publishing, create a new session in RUSH Lab and check that its intro shows
+the graph challenge, starting prompt and current configuration. Ask the agent
+to list problems, describe `bundled/repeated-shortest-paths`, and evaluate a
+candidate. Existing sessions remain evidence of the version they ran.
 
-The plugin supports only `plugin_python`, `solve_directory_v1`, exact bytes, and wall time. Supported configuration bounds: at least 1 second per guarded trial, at most 120 seconds per assessment, 256 trials, 1 MiB source, 4 MiB accepted output, and 1 MiB retained combined trial logs. The schedule must fit with 20% overhead. A bundle has at most 2,000 files and 32 MiB of snapshotted bytes. The total maximum declared evidence, snapshot, source allowance and 1 MiB report reserve must fit 64 MiB. Unsupported values fail; these are plugin limits, not new host quotas.
+The supported interface is `project_v1` / `executable_directory_v1`. A candidate
+has UTF-8 files, explicit preparation argv arrays and a run argv with exactly one
+`{input_dir}` and `{output_path}` argument. Preparation has at most 16 commands,
+30 seconds per command within the assessment's total deadline, and bounded logs.
+Python dependencies use uv and project manifests; other languages require an
+available toolchain and explicit commands. Missing tools, unavailable package
+hosts, invalid projects and preparation failures raise clear errors.
 
-On macOS the worker forks a solve process while retaining a trusted process-group anchor. Cleanup sends SIGKILL while the anchor still owns the group, then requires its kqueue exit event, direct-child reap and closed log streams within the original trial deadline. Independent PID and heartbeat tests cover descendants that close logs and ignore SIGTERM. Failed preflight diagnostics remain marked incomplete; sandbox-denied process enumeration is never interpreted as an empty group.
+Each trial receives a fresh copy of the prepared project and fixtures. Timing
+includes process guard startup and confirmed cleanup, excluding preparation and
+copying. macOS process-group ownership and EOF lifetime supervision remain in
+force for build commands and trials. Execution, cancellation and descendant
+ownership tests exercise deadlines and cleanup. Windows and Linux execution
+remain explicitly unsupported.
 
-The installed-package harness checks execution directly without server logs.
-Check the member workflow in the production RUSH Lab app after publishing:
+Configuration bounds remain 120 seconds per assessment, 256 trials, 1 MiB
+submitted project, 4 MiB accepted result per trial, 1 MiB retained combined log
+per command/trial, 2,000 bundle files, 32 MiB bundle snapshots and 64 MiB total
+declared report evidence. The schedule requires 20% timeout overhead. The graph
+bundle currently uses 2-second trials, 120 seconds total, one warmup and five
+measured pairs per case, speedup ≥1.10, slowdown ≤1.05 and relative MAD ≤0.10.
 
-- Install through the authenticated member path and exercise describe/evaluate/revise/artifact access with the loaded plugin version visible.
-- Exercise the real desktop Stop control and relay disconnect, independently confirming worker and managed descendant cleanup.
-- Measure the actual deployed outer deadline at the maximum supported schedule/evidence size, including installation/preflight, cleanup, repeated verification and serialization margin.
-- Calibrate substantive, startup-dominated, boundary and concurrent controls with the final timing boundary; retain unsuccessful outcomes.
-- Implement and test Windows process ownership and its sandbox before advertising Windows support. Linux is also explicitly unsupported in v1.
-
-Publishing preserves the manifest status; it does not schedule a build.
-`in-development` deliberately prevents the plugin from opening in RUSH Lab.
-Use a new version with `status: ready` when publishing a plugin to try in the app.
+Publishing preserves manifest status; no background build changes it. The new
+version must be pushed and published before the marketplace serves its session
+description or API. Local package validation does not update production.

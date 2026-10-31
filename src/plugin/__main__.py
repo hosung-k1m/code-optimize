@@ -11,15 +11,30 @@ from slimconfig import build_output, output_schema, plain_output
 
 from contract import TOOLS, Tool
 from plugin.benchmark import describe_problem, evaluate_code
+from plugin.bundles import list_problems
 
 server = Server("code-optimize")
-IMPLEMENTATIONS = {Tool.DESCRIBE_PROBLEM: describe_problem, Tool.EVALUATE_CODE: evaluate_code}
+IMPLEMENTATIONS = {
+    Tool.LIST_PROBLEMS: list_problems,
+    Tool.DESCRIBE_PROBLEM: describe_problem,
+    Tool.EVALUATE_CODE: evaluate_code,
+}
+DESCRIPTIONS = {
+    Tool.LIST_PROBLEMS: "List available problem bundles with exact origin and directory references.",
+    Tool.DESCRIBE_PROBLEM: "Read a problem prompt, baseline, and benchmark configuration.",
+    Tool.EVALUATE_CODE: "Evaluate a candidate project against a problem baseline.",
+}
 
 
 @server.list_tools()
 async def list_tools():
     return [
-        types.Tool(name=tool.value, inputSchema=output_schema(given), outputSchema=output_schema(made))
+        types.Tool(
+            name=tool.value,
+            description=DESCRIPTIONS[tool],
+            inputSchema=output_schema(given),
+            outputSchema=output_schema(made),
+        )
         for tool, (given, made) in TOOLS.items()
     ]
 

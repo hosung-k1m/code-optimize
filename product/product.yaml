@@ -1,11 +1,26 @@
 _ > nanoagent.plugin.v0001.ProductConfig:
-tagline: Measure Python optimizations against a reproducible baseline
-summary: Supply a problem bundle and candidate Python source. Receive exact output comparisons, fresh-process elapsed-time measurements and a deterministic acceptance verdict on your current machine.
+tagline: Beat a naive C++ shortest-path solver in your language of choice
+summary: >-
+  Optimize repeated shortest-path queries on weighted, undirected graphs. The C++17
+  baseline runs Dijkstra separately for every query; your executable may use any
+  language and must preserve exact integer answers, including unreachable vertices,
+  zero-weight edges and repeated queries. Start by asking: “List the problems, describe
+  bundled repeated-shortest-paths, then build and evaluate a faster solution in the
+  language you choose, including its dependencies.” The agent submits source files,
+  dependency manifests and build/run commands. Preparation runs before timing; each
+  trial uses a fresh process and project copy. Current graph configuration: mesh and
+  disconnected cases, 1 warmup and 5 measured pairs per case, alternating execution
+  order, exact output bytes, at least 1.10× suite speedup, at most 1.05× case slowdown
+  and relative timing MAD at most 0.10. Each trial has 2 seconds; the full assessment
+  has 120 seconds including preparation. Results show correctness, timing, source
+  snapshots and a deterministic verdict on your current machine.
 highlights:
-  - Exact output bytes and transparent per-case evidence
-  - Reusable problem bundles with explicit policies
-  - Guarded execution and bounded retained diagnostics
+  - Repeated graph queries, disconnected components, parallel edges and 64-bit distances
+  - Naive C++17 baseline; explicit candidate projects and dependency preparation
+  - Exact output comparisons, paired timing and code-enforced acceptance
+  - Discoverable problem references and retained source, build and trial evidence
 steps:
-  - Describe a bundled or workspace problem
-  - Write a solve function using its documented file interface
-  - Evaluate, inspect correctness and timing, then revise
+  - Ask the agent to list problems and describe bundled repeated-shortest-paths
+  - Inspect the baseline, file format, available tools and current settings
+  - Build an optimized project in your chosen language with declared dependencies
+  - Evaluate the project, inspect the verdict and revise using the measured evidence

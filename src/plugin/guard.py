@@ -12,7 +12,7 @@ from pathlib import Path
 
 from slimconfig import Config, load_config
 
-from plugin.process_control import ProcessExitWatcher, require_supported_platform, signal_group
+from plugin.process_control import ProcessExitWatcher, execution_environment, require_supported_platform, signal_group
 
 
 @dataclass
@@ -134,7 +134,7 @@ async def _run(directory: Path, cfg: GuardConfig) -> None:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={key: value for key, value in os.environ.items() if key in {"PATH", "HOME", "TMPDIR", "TEMP"}},
+            env=execution_environment(),
             start_new_session=True,
         )
         watcher = ProcessExitWatcher(child.pid)

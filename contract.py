@@ -8,11 +8,13 @@ from slimconfig import Output
 
 
 class Tool(Enum):
+    LIST_PROBLEMS = "list_problems"
     DESCRIBE_PROBLEM = "describe_problem"
     EVALUATE_CODE = "evaluate_code"
 
 
 class Task(Enum):
+    LIST_PROBLEMS = "list-problems"
     DESCRIBE_PROBLEM = "describe-problem"
     EVALUATE_CODE = "evaluate-code"
 
@@ -24,14 +26,43 @@ class ProblemReference(Output):
 
 
 @dataclass
+class ListProblemsInput(Output):
+    pass
+
+
+@dataclass
+class ProblemListing(Output):
+    reference: Annotated[ProblemReference, "Exact reference for describing or evaluating this bundle"]
+    description: Annotated[str, "Problem description"]
+
+
+@dataclass
+class ListProblemsOutput(Output):
+    problems: Annotated[list[ProblemListing], "Available bundled and workspace problem bundles"]
+
+
+@dataclass
 class DescribeInput(Output):
     problem: Annotated[ProblemReference, "Problem bundle to describe"]
 
 
 @dataclass
+class ProjectFile(Output):
+    path: Annotated[str, "Project-relative file path"]
+    content: Annotated[str, "UTF-8 file contents"]
+
+
+@dataclass
+class CandidateProject(Output):
+    files: Annotated[list[ProjectFile], "Candidate project files"]
+    prepare: Annotated[list[list[str]], "Preparation commands as argument arrays"]
+    run: Annotated[list[str], "Run command with {input_dir} and {output_path} arguments"]
+
+
+@dataclass
 class EvaluateInput(Output):
     problem: Annotated[ProblemReference, "Problem bundle to evaluate"]
-    source: Annotated[str, "Candidate Python source code"]
+    project: Annotated[CandidateProject, "Candidate source files and explicit preparation and run commands"]
 
 
 @dataclass
@@ -49,8 +80,8 @@ class CaseConfig(Output):
 
 @dataclass
 class ExecutionSettings(Output):
-    runtime: Annotated[str, "Required runtime; v1 supports plugin_python"]
-    interface: Annotated[str, "Required program interface; v1 supports solve_directory_v1"]
+    runtime: Annotated[str, "Required runtime; supports project_v1"]
+    interface: Annotated[str, "Required program interface; supports executable_directory_v1"]
     per_trial_timeout_seconds: Annotated[float, "Maximum guarded execution duration"]
     total_timeout_seconds: Annotated[float, "Maximum complete assessment duration"]
     max_source_bytes: Annotated[int, "Maximum candidate source size"]
@@ -96,6 +127,18 @@ class RuntimeIdentity(Output):
     lock_sha256: Annotated[str, "Dependency lock file SHA-256"]
     clock: Annotated[str, "Elapsed-time clock name"]
     resolution_ns: Annotated[int, "Elapsed-time clock resolution in nanoseconds"]
+    tools: Annotated[list[str], "Resolved available tool executables"]
+
+
+BASELINE_PREPARE = [["c++", "--version"], ["c++", "-std=c++17", "-O2", "baseline.cpp", "-o", "baseline"]]
+
+
+@dataclass
+class Preparation(Output):
+    implementation: Annotated[str, "baseline or candidate"]
+    command: Annotated[Artifact, "Canonical argv JSON artifact"]
+    stdout: Annotated[Artifact, "Bounded captured standard output"]
+    stderr: Annotated[Artifact, "Bounded captured standard error"]
 
 
 @dataclass
@@ -154,16 +197,19 @@ class EvaluateOutput(Output):
     prompt: Annotated[Artifact, "Snapshotted prompt artifact"]
     inputs: Annotated[list[Artifact], "Snapshotted fixture files"]
     runtime: Annotated[RuntimeIdentity, "Runtime identity used for the assessment"]
+    preparation: Annotated[list[Preparation], "Ordered preparation command and log evidence"]
     trials: Annotated[list[Trial], "Ordered raw baseline and candidate trial evidence"]
     summary: Annotated[Summary, "Deterministic result summary"]
     report_path: Annotated[str, "Workspace-relative report artifact path"]
 
 
 TOOLS = {
+    Tool.LIST_PROBLEMS: (ListProblemsInput, ListProblemsOutput),
     Tool.DESCRIBE_PROBLEM: (DescribeInput, DescribeOutput),
     Tool.EVALUATE_CODE: (EvaluateInput, EvaluateOutput),
 }
 TASKS = {
+    Task.LIST_PROBLEMS: (ListProblemsInput, ListProblemsOutput),
     Task.DESCRIBE_PROBLEM: (DescribeInput, DescribeOutput),
     Task.EVALUATE_CODE: (EvaluateInput, EvaluateOutput),
 }

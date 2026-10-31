@@ -2,10 +2,10 @@ _ > contract.ProblemConfig:
 schema_version: 1
 id: set-intersection
 prompt: prompt.md
-baseline: baseline.py
+baseline: baseline.cpp
 execution:
-  runtime: plugin_python
-  interface: solve_directory_v1
+  runtime: project_v1
+  interface: executable_directory_v1
   per_trial_timeout_seconds: 2.0
   total_timeout_seconds: 60.0
   max_source_bytes: 262144

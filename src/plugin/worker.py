@@ -16,9 +16,14 @@ class WorkerConfig(Config):
     source: str
     input_dir: str
     output_path: str
+    command: list[str] | None = None
+    project_dir: str = "."
 
 
 def _run_submission(config: WorkerConfig) -> None:
+    if config.command is not None:
+        os.chdir(config.project_dir)
+        os.execvp(config.command[0], config.command)
     source = Path(config.source).resolve(strict=True)
     spec = spec_from_file_location("submission", source)
     if spec is None or spec.loader is None:

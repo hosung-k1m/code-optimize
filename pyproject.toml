@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nanoagent-code-optimize"
-version = "0.1.1"
-description = "Measure Python optimizations against problem-bundle baselines"
+version = "0.2.0"
+description = "Benchmark multilingual projects against naive C++ problem baselines"
 requires-python = ">=3.12"
 dependencies = ["mcp>=1.27,<2", "slimconfig", "anyio>=4.5,<5", "omegaconf>=2.3,<3", "PyYAML>=6,<7"]
 

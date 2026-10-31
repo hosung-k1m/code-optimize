@@ -6,18 +6,22 @@ from statistics import median
 import pytest
 
 from contract import (
+    BASELINE_PREPARE,
     Artifact,
+    CandidateProject,
     CaseConfig,
     EvaluateOutput,
     ExecutionSettings,
     MeasurementSettings,
     Policy,
+    Preparation,
     ProblemConfig,
     ProblemReference,
+    ProjectFile,
     RuntimeIdentity,
     Trial,
 )
-from verifier.checks import assessment_fingerprint, validate_config_values, validate_evaluation
+from verifier.checks import assessment_fingerprint, project_bytes, validate_config_values, validate_evaluation
 from verifier.statistics import summarize
 
 
@@ -26,8 +30,8 @@ def config(minimum=1.1, slowdown=1.25, mad=0.05):
         schema_version=1,
         id="fixture",
         prompt="prompt.md",
-        baseline="baseline.py",
-        execution=ExecutionSettings("plugin_python", "solve_directory_v1", 2, 20, 1000, 1000, 1000),
+        baseline="baseline.cpp",
+        execution=ExecutionSettings("project_v1", "executable_directory_v1", 2, 20, 1000, 1000, 1000),
         measurement=MeasurementSettings("wall_time", 1, 3, "alternating"),
         policy=Policy(minimum, slowdown, mad),
         cases=[CaseConfig("one", "fixtures/one")],
@@ -238,9 +242,11 @@ def make_valid_assessment(tmp_path, *, baseline_ns=220, candidate_ns=200):
         path.write_bytes(data)
         return Artifact(relative, sha256(data).hexdigest(), len(data))
 
-    candidate_source = "def solve(path): return 1\n"
-    candidate = save(f"assessments/{assessment_id}/candidate.py", candidate_source.encode())
-    baseline = save(prefix + "baseline.py", b"def solve(path): return 1\n")
+    candidate_source = CandidateProject(
+        [ProjectFile("main.py", "print(1)")], [], ["python3", "main.py", "{input_dir}", "{output_path}"]
+    )
+    candidate = save(f"assessments/{assessment_id}/candidate.json", project_bytes(candidate_source))
+    baseline = save(prefix + "baseline.cpp", b"int main() {}\n")
     configuration = save(prefix + "problem.yaml", b"schema_version: 1\n")
     prompt = save(prefix + "prompt.md", b"solve\n")
     inputs = [save(prefix + "fixtures/one/input.txt", b"input\n")]
@@ -274,7 +280,19 @@ def make_valid_assessment(tmp_path, *, baseline_ns=220, candidate_ns=200):
                     2,
                 )
             )
-    runtime = RuntimeIdentity("1", "CPython", "3.12", "darwin", "arm64", "/python", "a" * 64, "perf_counter", 1)
+    preparation = []
+    for index, command in enumerate(BASELINE_PREPARE):
+        prefix = f"assessments/{assessment_id}/preparation/baseline/{index}/"
+        argv = json.dumps(command, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        preparation.append(
+            Preparation(
+                "baseline",
+                save(prefix + "command.json", argv),
+                save(prefix + "stdout.log", b""),
+                save(prefix + "stderr.log", b""),
+            )
+        )
+    runtime = RuntimeIdentity("1", "CPython", "3.12", "darwin", "arm64", "/python", "a" * 64, "perf_counter", 1, [])
     fingerprint = assessment_fingerprint(cfg, candidate, baseline, configuration, prompt, inputs)
     output = EvaluateOutput(
         1,
@@ -288,6 +306,7 @@ def make_valid_assessment(tmp_path, *, baseline_ns=220, candidate_ns=200):
         prompt,
         inputs,
         runtime,
+        preparation,
         trials_list,
         summarize(cfg, trials_list),
         f"assessments/{assessment_id}/report.json",
@@ -306,7 +325,7 @@ def write_report(output, report_path):
 def test_report_artifacts_hashes_schedule_and_json_are_bound(tmp_path):
     root, output, source, report_path = make_valid_assessment(tmp_path)
     assert validate_evaluation(output, root, source)[0]
-    assert not validate_evaluation(output, root, source + "# changed")[0]
+    assert not validate_evaluation(output, root, replace(source, files=[ProjectFile("main.py", "changed")]))[0]
 
     output.trials[0], output.trials[1] = output.trials[1], output.trials[0]
     assert not validate_evaluation(output, root, source)[0]
@@ -332,7 +351,7 @@ def test_report_artifacts_hashes_schedule_and_json_are_bound(tmp_path):
     output.candidate.sha256 = "0" * 64
     with pytest.raises(ValueError):
         validate_evaluation(output, root, source)
-    output.candidate.sha256 = sha256(source.encode()).hexdigest()
+    output.candidate.sha256 = sha256(project_bytes(source)).hexdigest()
 
     report_path.write_text("{}", encoding="utf-8")
     assert not validate_evaluation(output, root, source)[0]
@@ -454,5 +473,26 @@ def test_input_rejects_empty_and_oversized_sources():
     from verifier import verify_input
 
     reference = ProblemReference("bundled", "group-counts")
-    assert not verify_input("evaluate_code", EvaluateInput(reference, ""))["valid"]
-    assert not verify_input("evaluate_code", EvaluateInput(reference, "x" * 1048577))["valid"]
+    assert not verify_input("evaluate_code", EvaluateInput(reference, CandidateProject([], [], [])))["valid"]
+    oversized = CandidateProject(
+        [ProjectFile("main.py", "x" * 1048577)], [], ["python3", "main.py", "{input_dir}", "{output_path}"]
+    )
+    assert not verify_input("evaluate_code", EvaluateInput(reference, oversized))["valid"]
+
+
+def test_preparation_evidence_binds_argv_and_logs(tmp_path):
+    root, output, project, report_path = make_valid_assessment(tmp_path)
+    assert validate_evaluation(output, root, project)[0]
+    step = output.preparation[0]
+    log_path = root / step.stdout.path
+    log_path.write_bytes(b"tampered")
+    with pytest.raises(ValueError):
+        validate_evaluation(output, root, project)
+    log_path.write_bytes(b"")
+    command_path = root / step.command.path
+    wrong = b'["c++","--help"]'
+    command_path.write_bytes(wrong)
+    step.command.sha256 = sha256(wrong).hexdigest()
+    step.command.size = len(wrong)
+    write_report(output, report_path)
+    assert not validate_evaluation(output, root, project)[0]

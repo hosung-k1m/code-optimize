@@ -41,9 +41,10 @@ def main():
             if self.path == "/":
                 content, mime = PAGE, "text/html"
             elif self.path == "/evidence.json":
-                described = json.loads((evidence / "runs/describe-group-counts/returned-output.json").read_text())
-                output = json.loads((evidence / "runs/group-counts-identical-0/returned-output.json").read_text())
-                content, mime = json.dumps({"DescribeOutput": described, "EvaluateOutput": output}).encode(), "application/json"
+                described = json.loads((evidence / "runs/describe-repeated-shortest-paths/returned-output.json").read_text())
+                output = json.loads((evidence / "runs/python/returned-output.json").read_text())
+                listing = json.loads((evidence / "runs/list/returned-output.json").read_text())
+                content, mime = json.dumps({"ListProblemsOutput": listing, "DescribeOutput": described, "EvaluateOutput": output}).encode(), "application/json"
             elif self.path in ("/renderers.js", "/renderers.css"):
                 path = ROOT / "ui" / self.path[1:]
                 content, mime = path.read_bytes(), "text/javascript" if path.suffix == ".js" else "text/css"

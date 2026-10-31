@@ -12,7 +12,7 @@ def test_problem_yaml_loads_as_typed_contract(name, case_ids):
     config = load_problem_config(PROBLEMS / name / "problem.yaml")
     assert config.id == name
     assert [case.id for case in config.cases] == case_ids
-    assert config.execution.runtime == "plugin_python"
+    assert config.execution.runtime == "project_v1"
 
 
 def test_unknown_yaml_field_is_rejected(tmp_path):
@@ -24,7 +24,7 @@ def test_unknown_yaml_field_is_rejected(tmp_path):
 
 
 def test_unsupported_runtime_is_rejected(tmp_path):
-    source = (PROBLEMS / "group-counts" / "problem.yaml").read_text().replace("runtime: plugin_python", "runtime: python_system")
+    source = (PROBLEMS / "group-counts" / "problem.yaml").read_text().replace("runtime: project_v1", "runtime: python_system")
     path = tmp_path / "problem.yaml"
     path.write_text(source)
     with pytest.raises(ValueError, match="unsupported"):

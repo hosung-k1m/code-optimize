@@ -1,7 +1,7 @@
 _ > nanoagent.plugin.v0001.ManifestConfig:
 id: code-optimize
 name: Code Optimize
-version: 0.1.1
+version: 0.2.0
 status: ready
 spec: nanoagent.plugin/v0001
 
@@ -11,26 +11,34 @@ runtime > nanoagent.plugin.v0001.RuntimeConfig:
 
 permissions > nanoagent.plugin.v0001.PermissionsConfig:
   network > nanoagent.plugin.v0001.NetworkConfig:
-    hosts: []
+    hosts: [pypi.org, files.pythonhosted.org, registry.npmjs.org, index.crates.io, static.crates.io, proxy.golang.org, sum.golang.org, github.com, codeload.github.com]
   filesystem > nanoagent.plugin.v0001.FilesystemConfig:
     write: [workspace]
 
 tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
+  list_problems:
+    description: Discover all bundled and workspace problems and return exact references; call this first instead of guessing directories
   describe_problem:
-    description: Read a bundled or workspace problem, its baseline and exact benchmark policy
+    description: Read a problem's statement, naive C++ baseline, fixture sizes, available tools and current acceptance settings
   evaluate_code:
-    description: Execute Python source against the baseline and measure exact correctness and elapsed-time speedup
+    description: Prepare a candidate project in any language, then compare exact outputs and fresh-process elapsed time against the C++ baseline
 
 tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
+  list-problems:
+    description: Call this first to list exact bundled and workspace problem references; the default challenge is bundled repeated-shortest-paths
+    runner: tool
+    tools: [list_problems]
+    reference: null
+    instructions: Call list_problems with no arguments. Return its exact origin and directory references. Start with bundled repeated-shortest-paths unless the user selected another problem. Never guess workspace directories.
   describe-problem:
-    description: Describe a supported optimization problem
+    description: Describe a listed problem, including its naive C++ baseline, available tools and benchmark settings; default origin bundled, directory repeated-shortest-paths
     runner: tool
     tools: [describe_problem]
     reference: null
-    instructions: Read the explicitly selected problem bundle and report its interface, baseline, cases and policy.
+    instructions: Describe the selected problem using an exact reference from list_problems. For the default challenge use origin bundled and directory repeated-shortest-paths. Explain input/output files, naive C++ baseline, available tools, dependency preparation, cases and acceptance settings.
   evaluate-code:
-    description: Evaluate an optimized Python implementation
+    description: Prepare and test an optimized project in any available language against C++17; include source files, dependency manifests/lockfiles, prepare argv arrays and run argv with {input_dir} and {output_path}
     runner: tool
     tools: [evaluate_code]
     reference: null
-    instructions: Evaluate the supplied source against the selected bundle. Return the measured report, including failures, unchanged. Use its deterministic verdict to guide revisions.
+    instructions: Submit a typed project with UTF-8 files, prepare argv arrays and a run argv containing {input_dir} and {output_path}. Choose any language whose toolchain is available; include dependency manifests and lockfiles, installing Python dependencies with uv during preparation. Build once before timing. Return the report unchanged and use its deterministic verdict to guide revisions. Never claim a speedup without the measured report.

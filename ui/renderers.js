@@ -13,14 +13,35 @@ const reasons = {
 
 const artifact = value => h('p', {text: `${value.path} · ${value.size} bytes · SHA-256 ${value.sha256}`});
 
+function list(value) {
+  return h('section', {}, [
+    h('h2', {text: 'Available optimization problems'}),
+    ...value.problems.map(item => h('article', {}, [
+      h('h3', {text: item.reference.directory}),
+      h('p', {text: item.description}),
+      h('pre', {text: JSON.stringify(item.reference, null, 2)}),
+    ])),
+  ]);
+}
+
+function settings(config) {
+  return h('details', {}, [
+    h('summary', {text: 'Current benchmark configuration'}),
+    h('p', {text: `${config.measurement.warmup_pairs} warmup + ${config.measurement.measured_pairs} measured pairs per case; alternating order. ${config.execution.per_trial_timeout_seconds}s per trial; ${config.execution.total_timeout_seconds}s total including preparation.`}),
+    h('p', {text: `Exact output bytes; suite speedup ≥ ${config.policy.minimum_speedup}×; case slowdown ≤ ${config.policy.maximum_case_slowdown}×; relative MAD ≤ ${config.policy.maximum_relative_mad}.`}),
+    h('pre', {text: JSON.stringify(config, null, 2)}),
+  ]);
+}
+
 function describe(value) {
   const config = value.problem_config;
   return h('section', {}, [
     h('h2', {text: config.id}),
     markdown(value.prompt),
-    h('p', {text: `Required suite speedup ${config.policy.minimum_speedup}×; maximum case slowdown ${config.policy.maximum_case_slowdown}×; relative MAD ≤ ${config.policy.maximum_relative_mad}.`}),
+    settings(config),
     h('p', {text: value.case_summaries.join(' · ')}),
-    h('details', {}, [h('summary', {text: 'Baseline source'}), h('pre', {text: value.baseline_source})]),
+    h('p', {text: value.runtime.tools.join(' · ')}),
+    h('details', {}, [h('summary', {text: 'Naive C++17 baseline'}), h('pre', {text: value.baseline_source})]),
   ]);
 }
 
@@ -44,9 +65,12 @@ function evaluate(value, {verdict}) {
     h('p', {text: `${value.runtime.python_implementation} ${value.runtime.python_version} · ${value.runtime.platform} ${value.runtime.architecture}`}),
     h('p', {text: `Report: ${value.report_path}`}),
     artifact(value.candidate),
+    h('details', {}, [h('summary', {text: 'Build and dependency evidence'}), h('pre', {text: JSON.stringify(value.preparation, null, 2)})]),
+    settings(value.problem_config),
+    h('details', {}, [h('summary', {text: 'Runtime and available tools'}), h('pre', {text: JSON.stringify(value.runtime, null, 2)})]),
     h('details', {}, [h('summary', {text: 'Trial evidence'}), h('pre', {text: JSON.stringify(value.trials, null, 2)})]),
     ...(verdict ? [h('p', {text: verdict.message})] : []),
   ]);
 }
 
-export default {DescribeOutput: describe, EvaluateOutput: evaluate};
+export default {ListProblemsOutput: list, DescribeOutput: describe, EvaluateOutput: evaluate};

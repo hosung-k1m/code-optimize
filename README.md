@@ -1,87 +1,123 @@
 # Code Optimize
 
-A `nanoagent.plugin/v0001` plugin that checks Python optimizations against a
-problem bundle's baseline on the current computer. It follows NanoAgent's
-reference plugin structure, [arxiv-source](https://github.com/zeyuyang8/arxiv-source).
-Correctness, timing calculations and acceptance are decided by deterministic code.
+Optimize repeated shortest-path queries and measure your solution against a naive
+C++17 baseline on the current machine. The baseline runs Dijkstra for every query;
+candidates can reuse work, preprocess, and use any language with an available
+toolchain. Correctness and acceptance are decided by deterministic code.
 
 ## Tools
 
 | Tool | Does | Code |
 |---|---|---|
-| `describe_problem` | Reads a problem's prompt, baseline, cases, interface and benchmark policy | `src/plugin/benchmark.py` |
-| `evaluate_code` | Runs baseline/candidate pairs and returns exact output comparisons, timing evidence and artifacts | `src/plugin/benchmark.py` |
+| `list_problems` | Discovers bundled and workspace problems with exact references | `src/plugin/bundles.py` |
+| `describe_problem` | Shows the statement, C++ baseline, cases, tools and current policy | `src/plugin/benchmark.py` |
+| `evaluate_code` | Prepares a candidate project, compares exact bytes and measures speedup | `src/plugin/benchmark.py` |
 
 ### Tasks
 
-| Task | Does | Runner |
+| Task | Runner | Does |
 |---|---|---|
-| `describe-problem` | Describes a bundled or workspace optimization problem | `tool`, with `describe_problem` |
-| `evaluate-code` | Checks a candidate implementation and measures its speedup | `tool`, with `evaluate_code` |
+| `list-problems` | `tool`, `list_problems` | Finds available problems without guessing paths |
+| `describe-problem` | `tool`, `describe_problem` | Explains the selected challenge and configuration |
+| `evaluate-code` | `tool`, `evaluate_code` | Builds and checks a candidate project |
 
-Both tasks declare `reference: null`: evaluation runs the baseline alongside the
-candidate in the same assessment. A failed candidate returns a checked report
-with a failed task verdict. Invalid bundles, broken baselines and execution
-environment failures raise tool errors.
+All tasks use `reference: null`; the baseline runs alongside the candidate.
 
-### Problems and program interface
+Start a session with:
 
-The bundled problems are `group-counts` and `set-intersection`. A problem reference
-explicitly selects its origin and a directory relative to that origin:
+> List the problems, describe bundled repeated-shortest-paths, then build and
+> evaluate a faster solution in the language you choose, including its dependencies.
+
+### Problem and current configuration
+
+The default `repeated-shortest-paths` bundle contains weighted undirected graphs,
+repeated source queries, disconnected vertices, parallel edges, self-loops,
+zero-weight edges and distances requiring 64-bit arithmetic. Programs receive
+`INPUT_DIR OUTPUT_PATH`, read `graph.txt`, and write one integer answer per line.
+See its [statement](src/plugin/problems/repeated-shortest-paths/prompt.md).
+
+The graph configuration uses two cases (`mesh`, `disconnected`), one warmup and
+five measured pairs per case, alternating baseline/candidate order. Acceptance
+requires exact output bytes, geometric suite speedup ≥ 1.10, no case slowdown
+above 1.05, and relative timing MAD ≤ 0.10. Each guarded trial has 2 seconds and
+the entire assessment, including preparation, has 120 seconds. YAML is the source
+of truth: `describe_problem` returns the current validated configuration.
+
+The smaller `group-counts` and `set-intersection` bundles remain available, also
+with C++ baselines. Always call `list_problems` first and copy a returned reference:
 
 ```yaml
 origin: bundled
-directory: group-counts
+directory: repeated-shortest-paths
 ```
 
-For a staged workspace bundle, use `origin: workspace` and its directory relative
-to the workspace. Each bundle supplies `problem.yaml`, `prompt.md`, `baseline.py`
-and fixture directories. See the bundled
-[group-counts configuration](src/plugin/problems/group-counts/problem.yaml) and
-[intersection configuration](src/plugin/problems/set-intersection/problem.yaml).
+`workspace` means a real bundle staged in the session workspace. It does not name
+the bundled problems directory. Origins never substitute for each other. Absolute
+paths, traversal and symlink bundles are rejected.
 
-Baseline and candidate programs define:
+### Candidate projects and dependencies
 
-```python
-def solve(input_dir: str, output_path: str) -> None:
-    ...
+`evaluate_code` takes `problem` and a typed `project`. For a C++ candidate:
+
+```yaml
+project:
+  files:
+    - path: main.cpp
+      content: <your complete program>
+  prepare:
+    - [c++, -O2, -std=c++17, main.cpp, -o, solution]
+  run: [./solution, '{input_dir}', '{output_path}']
 ```
 
-Read the declared input files and write one result file. Its bytes must match the
-baseline exactly, including ordering, whitespace and final newlines. Ask the plugin
-to describe the problem before writing a candidate, then evaluate and revise the
-source using the returned report.
+For Python, submit a CLI script and `pyproject.toml`/`uv.lock` when dependencies
+are needed, prepare with `uv sync --frozen`, and run
+`[.venv/bin/python, main.py, '{input_dir}', '{output_path}']`. A standard-library
+script can use `python3` with no preparation. All third-party Python packages
+come from uv. Other languages use their own explicit argv commands and project
+manifests. There is no language allowlist. `describe_problem` reports tools found
+inside the runtime; a missing tool or failed dependency installation fails clearly.
+The C++ baseline requires a working `c++` C++17 compiler (macOS Command Line Tools).
+
+Preparation executes once, before measurements, with bounded logs and deadlines.
+The plugin permits HTTPS through the host proxy to its declared Python, npm,
+Cargo, Go and GitHub package hosts; other hosts are denied. Include lockfiles for
+reproducibility. Preparation never changes the plugin's own locked environment.
+Each trial receives a separate copy of the prepared project and fixture files,
+so writable state cannot carry answers from one trial into the next.
+
+### Measurements and evidence
+
+Timing includes fresh guarded process startup, execution and confirmed cleanup;
+it excludes compilation and dependency installation. Every output must match the
+baseline byte for byte, including order and newlines. Failed correctness,
+execution, stability or speed gates return a report with a failing task verdict.
+Invalid bundles, failed preparation and broken baselines raise explicit errors.
+
+Assessments retain the submitted project manifest, source/configuration/fixture
+snapshots, bounded diagnostics, result files and raw trials under
+`assessments/<id>/`. The verifier checks hashes, exact result bytes, trial schedule
+and computed policy outcomes. Fixtures are public; this is a cooperative local
+optimization benchmark, with no model deciding correctness.
 
 ## Layout
 
 ```text
 .
-├── nanoagent.yaml   # manifest: identity, runtime, permissions, tools and tasks
-├── contract.py      # typed tool/task inputs, outputs and report evidence
+├── nanoagent.yaml   # identity, runtime, permissions, tools and tasks
+├── contract.py      # typed input/output and evidence contracts
 ├── README.md
 ├── LICENSE
 ├── pyproject.toml
 ├── uv.lock
 ├── .gitignore
-├── .env             # no environment variables are required
-├── src/plugin/      # MCP server, bundle loading, benchmark and process supervision
-│   └── problems/    # problem YAML, prompts, baselines and fixtures
-├── tests/           # verifier, configuration, execution and integration checks
-├── ui/              # output renderers using the host's page kit
-├── product/         # catalog description and icon
-└── verifier/        # deterministic artifact, scoring and policy checks
+├── .env
+├── src/plugin/      # discovery, projects, benchmarking and process supervision
+│   └── problems/    # YAML, prompts, C++ baselines and fixtures
+├── tests/           # deterministic tests and installed-package release harness
+├── ui/              # result renderers using the host page kit
+├── product/         # session/catalog description and icon
+└── verifier/        # deterministic evidence and acceptance checks
 ```
-
-`contract.py` is the one place the tool and task shapes are declared. Its slimconfig
-`Output` classes define the JSON Schemas used by the server, NanoAgent and verifier.
-The tools return typed values directly; no model supplies benchmark measurements
-or decides a verdict.
-
-Each assessment saves its source, configuration and fixture snapshots under
-`assessments/<id>/`, together with bounded logs, accepted results and `report.json`.
-The report records hashes, runtime identity, raw trials and the computed summary.
-To add another problem, supply a new bundle and baseline tests; the evaluator and
-verifier stay the same.
 
 ## Develop and run
 
@@ -94,21 +130,7 @@ uv run ruff check .
 uv lock --check
 ```
 
-After changing dependencies, run `uv lock` and include `uv.lock` with the change.
-The plugin uses the installed Python environment, an empty runtime network-host
-list and workspace-only writes. It installs no dependencies during a trial.
-
-The installed-package harness, renderer preview and release checks are documented
-in [tests/RELEASE.md](tests/RELEASE.md). Run that harness with RUSH Lab's installed
-Python to check actual MCP calls and the macOS desktop sandbox.
-
-Version 0.1.1 is `ready` for use in RUSH Lab and supports macOS execution. Windows and Linux
-execution fail explicitly. It evaluates cooperative Python submissions within the
-existing desktop sandbox; fixtures are public. It enforces execution deadlines,
-accepted-result sizes and retained-log limits. CPU/RAM quotas, hard disk-write
-quotas and hostile-code isolation are not provided.
-
-RUSH Lab accepts a public GitHub repository. Publish a new manifest version for
-each update; published versions cannot be replaced. Keep `status: ready` to make
-the plugin available for installation and task execution. The owner accepts any
-submission terms themselves.
+After dependency changes, run `uv lock` and include `uv.lock`. Version 0.2.0
+replaces the old Python `source`/`solve()` API with an explicit `project` API.
+Guarded execution supports macOS; Windows and Linux fail explicitly.
+See [tests/RELEASE.md](tests/RELEASE.md) for installed desktop checks.

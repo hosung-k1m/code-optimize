@@ -6,6 +6,25 @@ import sys
 from dataclasses import dataclass
 
 
+def execution_environment() -> dict[str, str]:
+    """Preserve runtime paths, dependency settings and configured network proxies."""
+    allowed = {
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "TEMP",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+    }
+    return {key: value for key, value in os.environ.items() if key in allowed or key.startswith("UV_")}
+
+
 class UnsupportedPlatformError(RuntimeError):
     pass
 

@@ -1,5 +1,4 @@
 _ > __main__.ReleaseConfig:
-output_directory: ../code-optimize-local-test-evidence
-repetitions: 3
+output_directory: ../code-optimize-v020-desktop-evidence
 outer_timeout_seconds: 180.0
-calibrate: true
+dependency: six==1.17.0

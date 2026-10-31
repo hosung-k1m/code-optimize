@@ -8,7 +8,7 @@ from hashlib import sha256
 from math import isfinite
 from pathlib import Path
 
-from contract import EvaluateOutput
+from contract import BASELINE_PREPARE, EvaluateOutput
 
 from .statistics import summarize
 
@@ -22,10 +22,47 @@ def _relative_path(value):
     parts = value.split("/")
     return (
         bool(value)
+        and "\x00" not in value
         and not path.is_absolute()
         and "\\" not in value
         and all(part not in ("", ".", "..") for part in parts)
     )
+
+
+def project_bytes(project):
+    return json.dumps(asdict(project), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def validate_project(project, maximum):
+    if len(project.prepare) > 16:
+        raise ValueError("project exceeds the 16-command preparation limit")
+    if not project.files or not project.run:
+        raise ValueError("project must include files and a run command")
+    names = set()
+    for file in project.files:
+        if not _relative_path(file.path):
+            raise ValueError("project file path must be relative")
+        if file.path in names or not isinstance(file.content, str):
+            raise ValueError("project paths must be unique and contents must be text")
+        names.add(file.path)
+    if len(names) > 2000 or len(project_bytes(project)) > maximum:
+        raise ValueError("candidate project exceeds the configured size or file limit")
+    for command in [*project.prepare, project.run]:
+        if not command or not all(isinstance(arg, str) and arg and "\x00" not in arg for arg in command):
+            raise ValueError("commands must be nonempty argv arrays of nonempty strings")
+        for arg in command:
+            if arg.startswith("/") or "\\" in arg or ".." in arg.split("/"):
+                raise ValueError("command arguments must not contain absolute or parent paths")
+        if "/" in command[0]:
+            executable = command[0].removeprefix("./")
+            if not _relative_path(executable):
+                raise ValueError("command executable must be project-relative")
+    if project.run.count("{input_dir}") != 1 or project.run.count("{output_path}") != 1:
+        raise ValueError("run argv must include {input_dir} and {output_path} exactly once")
+    if any("{" in arg or "}" in arg for command in project.prepare for arg in command):
+        raise ValueError("prepare commands do not support placeholders")
+    if any(("{" in arg or "}" in arg) and arg not in ("{input_dir}", "{output_path}") for arg in project.run):
+        raise ValueError("unsupported run placeholder")
 
 
 def validate_config_values(config):
@@ -34,8 +71,8 @@ def validate_config_values(config):
     measurement = config.measurement
     policy = config.policy
     if (
-        execution.runtime != "plugin_python"
-        or execution.interface != "solve_directory_v1"
+        execution.runtime != "project_v1"
+        or execution.interface != "executable_directory_v1"
         or measurement.metric != "wall_time"
         or measurement.order != "alternating"
     ):
@@ -161,7 +198,7 @@ def valid_runtime(runtime):
     )
 
 
-def validate_evaluation(output, workspace, source=None):
+def validate_evaluation(output, workspace, project=None):
     if not isinstance(output, EvaluateOutput):
         return False, "output is not an EvaluateOutput"
     config = output.problem_config
@@ -192,6 +229,7 @@ def validate_evaluation(output, workspace, source=None):
         + output.configuration.size
         + output.prompt.size
         + sum(item.size for item in output.inputs)
+        + sum(item.command.size + item.stdout.size + item.stderr.size for item in output.preparation)
         + sum(
             trial.stdout.size + trial.stderr.size + (trial.result.size if trial.result is not None else 0)
             for trial in output.trials
@@ -200,8 +238,31 @@ def validate_evaluation(output, workspace, source=None):
     if evidence_size > 64 * 1024 * 1024:
         return False, "assessment evidence exceeds the plugin's supported size"
     candidate = _artifact(root, output.candidate, config.execution.max_source_bytes)
-    if source is not None and candidate != source.encode("utf-8"):
-        return False, "candidate artifact does not contain the submitted source"
+    if project is not None:
+        validate_project(project, config.execution.max_source_bytes)
+        if candidate != project_bytes(project):
+            return False, "candidate artifact does not contain the submitted project"
+    candidate_manifest = json.loads(candidate)
+    candidate_commands = candidate_manifest["prepare"]
+    expected_preparation = [("baseline", i, command) for i, command in enumerate(BASELINE_PREPARE)]
+    expected_preparation += [("candidate", i, command) for i, command in enumerate(candidate_commands)]
+    if len(output.preparation) != len(expected_preparation):
+        return False, "preparation schedule does not match submitted commands"
+    for evidence, (implementation, index, command) in zip(output.preparation, expected_preparation, strict=True):
+        prefix = f"assessments/{output.assessment_id}/preparation/{implementation}/{index}/"
+        if evidence.implementation != implementation or [
+            evidence.command.path,
+            evidence.stdout.path,
+            evidence.stderr.path,
+        ] != [prefix + "command.json", prefix + "stdout.log", prefix + "stderr.log"]:
+            return False, "preparation artifacts do not match their schedule"
+        command_bytes = json.dumps(command, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if _artifact(root, evidence.command, config.execution.max_source_bytes) != command_bytes:
+            return False, "preparation command does not match its project"
+        stdout = _artifact(root, evidence.stdout, config.execution.max_log_bytes)
+        stderr = _artifact(root, evidence.stderr, config.execution.max_log_bytes)
+        if len(stdout) + len(stderr) > config.execution.max_log_bytes:
+            return False, "combined preparation logs exceed the configured limit"
     _artifact(root, output.baseline, config.execution.max_source_bytes)
     _artifact(root, output.configuration, 1024 * 1024)
     _artifact(root, output.prompt, 1024 * 1024)
@@ -211,6 +272,8 @@ def validate_evaluation(output, workspace, source=None):
         return False, "input artifact paths are duplicated"
     artifact_paths = [output.candidate.path, output.baseline.path, output.configuration.path, output.prompt.path]
     artifact_paths.extend(item.path for item in output.inputs)
+    for item in output.preparation:
+        artifact_paths.extend((item.command.path, item.stdout.path, item.stderr.path))
     for trial in output.trials:
         artifact_paths.extend([trial.stdout.path, trial.stderr.path])
         if trial.result is not None:
@@ -341,7 +404,7 @@ def validate_evaluation(output, workspace, source=None):
         return False, "report file is not valid JSON"
     if report != asdict(output):
         return False, "report JSON does not match the typed assessment"
-    if output.candidate.path != f"assessments/{output.assessment_id}/candidate.py":
+    if output.candidate.path != f"assessments/{output.assessment_id}/candidate.json":
         return False, "candidate artifact path is not bound to this assessment"
     if output.baseline.path != f"assessments/{output.assessment_id}/snapshot/{config.baseline}":
         return False, "baseline artifact path is not bound to the problem configuration"
@@ -378,7 +441,7 @@ def assessment_fingerprint(config, candidate, baseline, configuration, prompt, i
     ]
     files.sort(key=lambda item: item["path"])
     problem = {"config": asdict(config), "files": files}
-    candidate_identity = {"path": "candidate.py", "sha256": candidate.sha256, "size": candidate.size}
+    candidate_identity = {"path": "candidate.json", "sha256": candidate.sha256, "size": candidate.size}
     payload = {"problem": problem, "candidate": candidate_identity}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return sha256(encoded).hexdigest()
