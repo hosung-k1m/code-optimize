@@ -18,9 +18,17 @@ class WorkerConfig(Config):
     output_path: str
     command: list[str] | None = None
     project_dir: str = "."
+    wasi_memory_bytes: int | None = None
+    wasi_fuel: int | None = None
 
 
 def _run_submission(config: WorkerConfig) -> None:
+    if config.command is not None and config.wasi_memory_bytes is not None:
+        from plugin.wasi import run_module
+
+        run_module(config.command, Path(config.project_dir), Path(config.input_dir),
+                   Path(config.output_path).parent, config.wasi_memory_bytes, config.wasi_fuel)
+        return
     if config.command is not None:
         os.chdir(config.project_dir)
         os.execvp(config.command[0], config.command)

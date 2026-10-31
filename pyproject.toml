@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nanoagent-code-optimize"
-version = "0.2.0"
-description = "Benchmark multilingual projects against naive C++ problem baselines"
+version = "0.3.0"
+description = "Benchmark WASI projects with fixed limits against naive C++ baselines"
 requires-python = ">=3.12"
-dependencies = ["mcp>=1.27,<2", "slimconfig", "anyio>=4.5,<5", "omegaconf>=2.3,<3", "PyYAML>=6,<7"]
+dependencies = ["mcp>=1.27,<2", "slimconfig", "anyio>=4.5,<5", "omegaconf>=2.3,<3", "PyYAML>=6,<7", "wasmtime==50.0.1", "ziglang==0.14.1"]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]

@@ -45,12 +45,22 @@ function describe(value) {
   ]);
 }
 
+function medianTime(trials, caseId, implementation) {
+  const samples = trials.filter(item => item.case_id === caseId && item.implementation === implementation && !item.warmup)
+    .map(item => item.elapsed_ns).sort((a, b) => a - b);
+  const middle = Math.floor(samples.length / 2);
+  const nanoseconds = samples.length % 2 ? samples[middle] : (samples[middle - 1] + samples[middle]) / 2;
+  return `${number(nanoseconds / 1e6)} ms`;
+}
+
 function evaluate(value, {verdict}) {
   const summary = value.summary;
   if (!Object.hasOwn(reasons, summary.reason)) throw new Error('Unknown assessment reason');
   const rows = summary.cases.map(item => h('tr', {}, [
     h('td', {text: item.case_id}),
     h('td', {text: item.outputs_match ? 'Match' : 'Failed'}),
+    h('td', {text: medianTime(value.trials, item.case_id, 'baseline')}),
+    h('td', {text: medianTime(value.trials, item.case_id, 'candidate')}),
     h('td', {text: `${number(item.speedup)}×`}),
     h('td', {text: number(item.baseline_relative_mad)}),
     h('td', {text: number(item.candidate_relative_mad)}),
@@ -59,10 +69,11 @@ function evaluate(value, {verdict}) {
     h('h2', {text: reasons[summary.reason]}),
     h('p', {text: `Suite speedup ${number(summary.suite_speedup)}× · ${value.trials.length} guarded executions`}),
     h('div', {class: 'measurements', role: 'region', 'aria-label': 'Case measurements', tabindex: '0'}, [h('table', {}, [
-      h('thead', {}, [h('tr', {}, ['Case', 'Output', 'Speedup', 'Baseline MAD', 'Candidate MAD'].map(text => h('th', {text})))]),
+      h('thead', {}, [h('tr', {}, ['Case', 'Output', 'Baseline median', 'Candidate median', 'Speedup', 'Baseline MAD', 'Candidate MAD'].map(text => h('th', {text})))]),
       h('tbody', {}, rows),
     ])]),
-    h('p', {text: `${value.runtime.python_implementation} ${value.runtime.python_version} · ${value.runtime.platform} ${value.runtime.architecture}`}),
+    h('p', {text: `Wasmtime ${value.runtime.wasmtime_version} · Zig ${value.runtime.zig_version} · one WASI execution thread · ${value.runtime.wasi_memory_bytes} bytes linear memory · ${value.runtime.wasi_fuel} fuel units per trial`}),
+    h('p', {text: `Timing host: ${value.runtime.platform} ${value.runtime.architecture}. Runtime overhead is outside the guest memory cap.`}),
     h('p', {text: `Report: ${value.report_path}`}),
     artifact(value.candidate),
     h('details', {}, [h('summary', {text: 'Build and dependency evidence'}), h('pre', {text: JSON.stringify(value.preparation, null, 2)})]),

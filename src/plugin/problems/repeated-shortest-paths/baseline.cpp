@@ -1,4 +1,4 @@
-#include <filesystem>
+#include <string>
 #include <fstream>
 #include <functional>
 #include <limits>
@@ -8,7 +8,7 @@
 
 int main(int argc, char** argv) {
     if (argc != 3) return 1;
-    std::ifstream input(std::filesystem::path(argv[1]) / "graph.txt");
+    std::ifstream input(std::string(argv[1]) + "/graph.txt");
     std::ofstream output(argv[2], std::ios::binary);
     int n, m, q;
     if (!input || !output || !(input >> n >> m >> q)) return 1;

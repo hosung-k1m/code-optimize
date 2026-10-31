@@ -38,7 +38,7 @@ class BaselineError(RuntimeError):
     """The supplied expected-output oracle could not establish a stable result."""
 
 
-def runtime_identity(commands=()):
+def runtime_identity(execution, commands=()):
     lock = Path(contract.__file__).with_name("uv.lock")
     if not lock.is_file():
         raise ExecutionEnvironmentError("installed plugin root must contain uv.lock")
@@ -56,6 +56,10 @@ def runtime_identity(commands=()):
         clock=clock.implementation,
         resolution_ns=max(1, math.ceil(clock.resolution * 1_000_000_000)),
         tools=[f"{name}={shutil.which(name) or 'unavailable'}" for name in sorted(set(commands))],
+        wasmtime_version=version("wasmtime"),
+        zig_version=version("ziglang"),
+        wasi_memory_bytes=execution.wasi_memory_bytes,
+        wasi_fuel=execution.wasi_fuel,
     )
 
 
@@ -88,10 +92,15 @@ def _input_files(path, expected):
 async def describe_problem(value, workspace):
     bundle = load_problem(value.problem, workspace)
     return DescribeOutput(
-        prompt=bundle.prompt.decode("utf-8"),
+        prompt=bundle.prompt.decode("utf-8") + (
+            "\n\n## Benchmark runtime\n"
+            f"WASI runs with one execution thread, {bundle.config.execution.wasi_memory_bytes} bytes "
+            f"of linear memory, and {bundle.config.execution.wasi_fuel} instruction fuel per trial. "
+            "Wall time depends on the host CPU and competing workloads.\n"
+        ),
         baseline_source=bundle.baseline.decode("utf-8"),
         problem_config=bundle.config,
-        runtime=runtime_identity(("c++", "uv", "python3", "node", "npm", "cargo", "go")),
+        runtime=runtime_identity(bundle.config.execution, ("python3",)),
         case_summaries=[
             f"{case.id}: {len(bundle.inputs[case.id])} input file(s), "
             f"{sum(map(len, bundle.inputs[case.id].values()))} bytes"
@@ -111,7 +120,7 @@ async def evaluate_code(value, workspace):
     baseline_project = CandidateProject(
         files=[ProjectFile(path="baseline.cpp", content=bundle.baseline.decode("utf-8"))],
         prepare=contract.BASELINE_PREPARE,
-        run=["./baseline", "{input_dir}", "{output_path}"],
+        run=["./baseline.wasm", "{input_dir}", "{output_path}"],
     )
     trial_count = 2 * len(config.cases) * (config.measurement.warmup_pairs + config.measurement.measured_pairs)
     build_commands = [*baseline_project.prepare, *value.project.prepare]
@@ -155,8 +164,8 @@ async def evaluate_code(value, workspace):
             if any(item.path == path.relative_to(workspace).as_posix() for item in inputs):
                 continue
             inputs.append(_artifact(workspace, path, data))
-    commands = ["c++", *(command[0] for command in value.project.prepare), value.project.run[0]]
-    identity = runtime_identity(name for name in commands if "/" not in name)
+    commands = ["python3", *(command[0] for command in value.project.prepare), value.project.run[0]]
+    identity = runtime_identity(config.execution, (name for name in commands if "/" not in name))
     trials = []
     preparation = []
     try:
@@ -206,18 +215,19 @@ async def evaluate_code(value, workspace):
                             config.execution.per_trial_timeout_seconds,
                             config.execution.max_output_bytes,
                             config.execution.max_log_bytes,
-                            [
-                                str(directory / "inputs")
-                                if arg == "{input_dir}"
-                                else str(directory / "result.bin")
-                                if arg == "{output_path}"
-                                else arg
-                                for arg in projects[implementation].run
-                            ],
+                            projects[implementation].run,
                             project_dir,
+                            wasi_memory_bytes=config.execution.wasi_memory_bytes,
+                            wasi_fuel=config.execution.wasi_fuel,
                         )
                         if not executed.cleanup_confirmed or executed.status == "controller_lost":
                             raise ExecutionEnvironmentError("guard did not complete a supervised execution")
+                        result_dir = directory / "result"
+                        invalid_result_directory = any(item.name != "result.bin" for item in result_dir.iterdir())
+                        if (result_dir / "result.bin").exists() or (result_dir / "result.bin").is_symlink():
+                            (result_dir / "result.bin").rename(directory / "result.bin")
+                        if not invalid_result_directory:
+                            result_dir.rmdir()
                         unchanged = _input_files(directory / "inputs", bundle.inputs[case.id]) == bundle.inputs[case.id]
                         status = executed.status if unchanged else "input_modified"
                         allowed = {
@@ -233,7 +243,7 @@ async def evaluate_code(value, workspace):
                             "__pycache__",
                             "result.bin",
                         }
-                        if any(item.name not in allowed for item in directory.iterdir()):
+                        if invalid_result_directory or any(item.name not in allowed for item in directory.iterdir()):
                             status = "invalid_output"
                         result = None
                         data = None

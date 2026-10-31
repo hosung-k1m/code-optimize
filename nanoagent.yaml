@@ -1,7 +1,7 @@
 _ > nanoagent.plugin.v0001.ManifestConfig:
 id: code-optimize
 name: Code Optimize
-version: 0.2.0
+version: 0.3.0
 status: ready
 spec: nanoagent.plugin/v0001
 
@@ -11,34 +11,54 @@ runtime > nanoagent.plugin.v0001.RuntimeConfig:
 
 permissions > nanoagent.plugin.v0001.PermissionsConfig:
   network > nanoagent.plugin.v0001.NetworkConfig:
-    hosts: [pypi.org, files.pythonhosted.org, registry.npmjs.org, index.crates.io, static.crates.io, proxy.golang.org, sum.golang.org, github.com, codeload.github.com]
+    hosts: [pypi.org, files.pythonhosted.org, registry.npmjs.org, index.crates.io, static.crates.io, proxy.golang.org, sum.golang.org, github.com, codeload.github.com, release-assets.githubusercontent.com]
   filesystem > nanoagent.plugin.v0001.FilesystemConfig:
     write: [workspace]
 
 tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
   list_problems:
-    description: Discover all bundled and workspace problems and return exact references; call this first instead of guessing directories
+    description: Discover exact problem references before choosing one
   describe_problem:
-    description: Read a problem's statement, naive C++ baseline, fixture sizes, available tools and current acceptance settings
+    description: Read the problem, C++ baseline, WASI resource limits, bundled build tools and benchmark settings
   evaluate_code:
-    description: Prepare a candidate project in any language, then compare exact outputs and fresh-process elapsed time against the C++ baseline
+    description: Compile a project to WASI, execute it with fixed memory and instruction limits, and return measured correctness and timing
 
 tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
   list-problems:
-    description: Call this first to list exact bundled and workspace problem references; the default challenge is bundled repeated-shortest-paths
+    description: &list_instructions >-
+      Call this first to list exact bundled and workspace problem references. The default
+      challenge is origin bundled, directory repeated-shortest-paths. Never guess directories.
     runner: tool
     tools: [list_problems]
     reference: null
-    instructions: Call list_problems with no arguments. Return its exact origin and directory references. Start with bundled repeated-shortest-paths unless the user selected another problem. Never guess workspace directories.
+    instructions: *list_instructions
   describe-problem:
-    description: Describe a listed problem, including its naive C++ baseline, available tools and benchmark settings; default origin bundled, directory repeated-shortest-paths
+    description: &describe_instructions >-
+      Describe a listed problem and show its exact current WASI resource limits and
+      benchmark policy before coding. Default origin bundled, directory repeated-shortest-paths.
+      Execution uses one WASI thread, 2147483648 bytes of linear memory and 30000000000
+      instruction fuel units per trial. Build tools and Wasmtime ship in the plugin;
+      Docker and desktop changes are unnecessary. Candidates must compile to WASIp1.
     runner: tool
     tools: [describe_problem]
     reference: null
-    instructions: Describe the selected problem using an exact reference from list_problems. For the default challenge use origin bundled and directory repeated-shortest-paths. Explain input/output files, naive C++ baseline, available tools, dependency preparation, cases and acceptance settings.
+    instructions: *describe_instructions
   evaluate-code:
-    description: Prepare and test an optimized project in any available language against C++17; include source files, dependency manifests/lockfiles, prepare argv arrays and run argv with {input_dir} and {output_path}
+    description: &evaluate_instructions >-
+      Actually build and benchmark the candidate; do not stop at printing source.
+      Submit UTF-8 project.files, project.prepare argv arrays and project.run beginning
+      with a relative .wasm path followed by {input_dir} and {output_path}. For C++ use
+      [python3, -m, ziglang, c++, -target, wasm32-wasi, -fno-exceptions, -O2, -std=c++17,
+      main.cpp, -o, main.wasm] then run [./main.wasm, '{input_dir}', '{output_path}'].
+      Use standard headers. Other languages need a compiler or interpreter producing
+      WASIp1; native executables and plain Python/JavaScript cannot be run as candidates.
+      Include dependency manifests and lockfiles; use uv for Python build dependencies.
+      Compilation and dependency preparation run before measurement. After any compiler
+      error, fix the project and call evaluate-code again. Continue until a complete
+      measured report is returned or report the actual blocking error. Never replace
+      execution with corrected source, a Makefile, confidence or theoretical speedup.
+      Summarize only the returned verdict and measured baseline/candidate times and speedup.
     runner: tool
     tools: [evaluate_code]
     reference: null
-    instructions: Submit a typed project with UTF-8 files, prepare argv arrays and a run argv containing {input_dir} and {output_path}. Choose any language whose toolchain is available; include dependency manifests and lockfiles, installing Python dependencies with uv during preparation. Build once before timing. Return the report unchanged and use its deterministic verdict to guide revisions. Never claim a speedup without the measured report.
+    instructions: *evaluate_instructions

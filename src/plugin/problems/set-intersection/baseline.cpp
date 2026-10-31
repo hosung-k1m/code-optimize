@@ -1,12 +1,12 @@
 #include <algorithm>
-#include <filesystem>
+#include <string>
 #include <fstream>
 #include <vector>
 
 int main(int argc, char** argv) {
     if (argc != 3) return 1;
-    std::ifstream left(std::filesystem::path(argv[1]) / "left.txt");
-    std::ifstream right(std::filesystem::path(argv[1]) / "right.txt");
+    std::ifstream left(std::string(argv[1]) + "/left.txt");
+    std::ifstream right(std::string(argv[1]) + "/right.txt");
     std::ofstream output(argv[2], std::ios::binary);
     if (!left || !right || !output) return 1;
     std::vector<long long> left_values, right_values, result;

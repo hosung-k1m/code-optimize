@@ -31,7 +31,7 @@ def config(minimum=1.1, slowdown=1.25, mad=0.05):
         id="fixture",
         prompt="prompt.md",
         baseline="baseline.cpp",
-        execution=ExecutionSettings("project_v1", "executable_directory_v1", 2, 20, 1000, 1000, 1000),
+        execution=ExecutionSettings("wasi_project_v1", "executable_directory_v1", 2, 20, 1000, 1000, 1000, 2147483648, 30000000000),
         measurement=MeasurementSettings("wall_time", 1, 3, "alternating"),
         policy=Policy(minimum, slowdown, mad),
         cases=[CaseConfig("one", "fixtures/one")],
@@ -243,7 +243,7 @@ def make_valid_assessment(tmp_path, *, baseline_ns=220, candidate_ns=200):
         return Artifact(relative, sha256(data).hexdigest(), len(data))
 
     candidate_source = CandidateProject(
-        [ProjectFile("main.py", "print(1)")], [], ["python3", "main.py", "{input_dir}", "{output_path}"]
+        [ProjectFile("main.wat", "(module)")], [], ["./main.wat", "{input_dir}", "{output_path}"]
     )
     candidate = save(f"assessments/{assessment_id}/candidate.json", project_bytes(candidate_source))
     baseline = save(prefix + "baseline.cpp", b"int main() {}\n")
@@ -292,7 +292,8 @@ def make_valid_assessment(tmp_path, *, baseline_ns=220, candidate_ns=200):
                 save(prefix + "stderr.log", b""),
             )
         )
-    runtime = RuntimeIdentity("1", "CPython", "3.12", "darwin", "arm64", "/python", "a" * 64, "perf_counter", 1, [])
+    runtime = RuntimeIdentity("1", "CPython", "3.12", "darwin", "arm64", "/python", "a" * 64,
+                              "perf_counter", 1, [], "50.0.1", "0.14.1", 2147483648, 30000000000)
     fingerprint = assessment_fingerprint(cfg, candidate, baseline, configuration, prompt, inputs)
     output = EvaluateOutput(
         1,

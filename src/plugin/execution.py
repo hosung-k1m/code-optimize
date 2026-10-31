@@ -44,6 +44,8 @@ async def run_trial(
     command: list[str] | None = None,
     project_dir: Path | None = None,
     prepare: bool = False,
+    wasi_memory_bytes: int | None = None,
+    wasi_fuel: int | None = None,
 ) -> ExecutionResult:
     """Run project argv, or an internal solve probe, under an EOF lifetime guard.
 
@@ -56,13 +58,17 @@ async def run_trial(
         raise ValueError("timeouts and output limits must be positive/nonnegative")
     if (command is None and not (directory / "source.py").is_file()) or not (directory / "inputs").is_dir():
         raise ValueError("trial directory must contain inputs/ and a command or probe source.py")
+    if wasi_memory_bytes is not None:
+        (directory / "result").mkdir()
     _write_config(
         directory / "run.yaml",
         "plugin.worker.WorkerConfig",
         {
             "source": "source.py",
             "input_dir": "inputs",
-            "output_path": "result.bin",
+            "output_path": "result/result.bin" if wasi_memory_bytes is not None else "result.bin",
+            "wasi_memory_bytes": wasi_memory_bytes,
+            "wasi_fuel": wasi_fuel,
             "command": command,
             "project_dir": str(project_dir or directory),
         },
@@ -78,6 +84,7 @@ async def run_trial(
             "cleanup_deadline_ns": deadline_ns,
             "max_output_bytes": max_output_bytes,
             "max_log_bytes": max_log_bytes,
+            "output_path": "result/result.bin" if wasi_memory_bytes is not None else "result.bin",
             "lifetime_fd": read_fd,
         },
     )

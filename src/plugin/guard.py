@@ -22,6 +22,7 @@ class GuardConfig(Config):
     max_output_bytes: int
     max_log_bytes: int
     lifetime_fd: int
+    output_path: str = "result.bin"
 
 
 def _status(
@@ -165,7 +166,10 @@ async def _run(directory: Path, cfg: GuardConfig) -> None:
                         break
                 except BlockingIOError:
                     pass
-            result = directory / "result.bin"
+            result = directory / cfg.output_path
+            if cfg.output_path != "result.bin" and any(item.name != "result.bin" for item in result.parent.iterdir()):
+                status = "invalid_output"
+                break
             if result.is_symlink() or (result.exists() and not result.is_file()):
                 status = "invalid_output"
                 break
@@ -206,7 +210,7 @@ async def _run(directory: Path, cfg: GuardConfig) -> None:
         )
         if overflow and status == "ok":
             status = "log_limit"
-        result = directory / "result.bin"
+        result = directory / cfg.output_path
         if status == "ok":
             if result.is_symlink() or (result.exists() and not result.is_file()):
                 status = "invalid_output"

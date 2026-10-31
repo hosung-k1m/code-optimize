@@ -7,12 +7,14 @@ from plugin.config import load_problem_config
 PROBLEMS = Path(__file__).parents[1] / "src" / "plugin" / "problems"
 
 
-@pytest.mark.parametrize("name,case_ids", [("group-counts", ["uniform", "skewed"]), ("set-intersection", ["balanced", "overlap"])])
+@pytest.mark.parametrize("name,case_ids", [("group-counts", ["uniform", "skewed"]), ("set-intersection", ["balanced", "overlap"]), ("repeated-shortest-paths", ["mesh", "disconnected"])])
 def test_problem_yaml_loads_as_typed_contract(name, case_ids):
     config = load_problem_config(PROBLEMS / name / "problem.yaml")
     assert config.id == name
     assert [case.id for case in config.cases] == case_ids
-    assert config.execution.runtime == "project_v1"
+    assert config.execution.runtime == "wasi_project_v1"
+    assert config.execution.wasi_memory_bytes == 2147483648
+    assert config.execution.wasi_fuel == 30000000000
 
 
 def test_unknown_yaml_field_is_rejected(tmp_path):
@@ -24,7 +26,7 @@ def test_unknown_yaml_field_is_rejected(tmp_path):
 
 
 def test_unsupported_runtime_is_rejected(tmp_path):
-    source = (PROBLEMS / "group-counts" / "problem.yaml").read_text().replace("runtime: project_v1", "runtime: python_system")
+    source = (PROBLEMS / "group-counts" / "problem.yaml").read_text().replace("runtime: wasi_project_v1", "runtime: python_system")
     path = tmp_path / "problem.yaml"
     path.write_text(source)
     with pytest.raises(ValueError, match="unsupported"):
@@ -123,6 +125,8 @@ def test_problem_yaml_rejects_wrong_nested_schema(tmp_path):
         ("max_output_bytes: 1048576", "max_output_bytes: 4194305", "supported assessment limits"),
         ("max_log_bytes: 65536", "max_log_bytes: 1048577", "supported assessment limits"),
         ("per_trial_timeout_seconds: 2.0", "per_trial_timeout_seconds: 0.5", "invalid limits"),
+        ("wasi_memory_bytes: 2147483648", "wasi_memory_bytes: 1073741824", "invalid limits"),
+        ("wasi_fuel: 30000000000", "wasi_fuel: 3000000000", "invalid limits"),
     ],
 )
 def test_unsupported_resource_limits_are_rejected(tmp_path, old, new, reason):

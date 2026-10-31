@@ -57,6 +57,8 @@ def validate_project(project, maximum):
             executable = command[0].removeprefix("./")
             if not _relative_path(executable):
                 raise ValueError("command executable must be project-relative")
+    if not project.run[0].endswith((".wasm", ".wat")) or "/" not in project.run[0]:
+        raise ValueError("run executable must be a project-relative WASI module")
     if project.run.count("{input_dir}") != 1 or project.run.count("{output_path}") != 1:
         raise ValueError("run argv must include {input_dir} and {output_path} exactly once")
     if any("{" in arg or "}" in arg for command in project.prepare for arg in command):
@@ -71,7 +73,7 @@ def validate_config_values(config):
     measurement = config.measurement
     policy = config.policy
     if (
-        execution.runtime != "project_v1"
+        execution.runtime != "wasi_project_v1"
         or execution.interface != "executable_directory_v1"
         or measurement.metric != "wall_time"
         or measurement.order != "alternating"
@@ -89,6 +91,8 @@ def validate_config_values(config):
     if (
         execution.per_trial_timeout_seconds < 1
         or execution.total_timeout_seconds <= 0
+        or execution.wasi_memory_bytes != 2147483648
+        or execution.wasi_fuel != 30000000000
         or min(execution.max_source_bytes, execution.max_output_bytes, execution.max_log_bytes) <= 0
         or measurement.warmup_pairs < 0
         or measurement.measured_pairs <= 0
@@ -193,6 +197,10 @@ def valid_runtime(runtime):
         all(fields)
         and Path(runtime.executable).is_absolute()
         and runtime.resolution_ns > 0
+        and runtime.wasmtime_version == "50.0.1"
+        and runtime.zig_version == "0.14.1"
+        and runtime.wasi_memory_bytes == 2147483648
+        and runtime.wasi_fuel == 30000000000
         and len(runtime.lock_sha256) == 64
         and all(character in "0123456789abcdef" for character in runtime.lock_sha256)
     )
@@ -209,7 +217,9 @@ def validate_evaluation(output, workspace, project=None):
         return False, message
     execution = config.execution
     runtime = output.runtime
-    if not valid_runtime(runtime):
+    if (runtime.wasi_memory_bytes != execution.wasi_memory_bytes
+            or runtime.wasi_fuel != execution.wasi_fuel
+            or not valid_runtime(runtime)):
         return False, "runtime identity is invalid"
     if output.problem.origin not in ("bundled", "workspace") or not _relative_path(output.problem.directory):
         return False, "problem reference is invalid"

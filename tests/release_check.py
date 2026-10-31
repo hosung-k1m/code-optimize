@@ -28,13 +28,21 @@ class ReleaseConfig(Config):
 ROOT = Path(__file__).parents[1]
 
 
-def project(source, *, executable="python3", filename="main.py", files=None, prepare=None):
+def cpp_project(source, *, files=None, prepare=None):
     return {
-        "files": [{"path": filename, "content": source}, *(files or [])],
-        "prepare": prepare or [],
-        "run": [executable, filename, "{input_dir}", "{output_path}"],
+        "files": [{"path": "main.cpp", "content": source}, *(files or [])],
+        "prepare": [*(prepare or []), ["python3", "-m", "ziglang", "c++", "-target", "wasm32-wasi",
+                    "-fno-exceptions", "-O2", "-std=c++17", "main.cpp", "-o", "main.wasm"]],
+        "run": ["./main.wasm", "{input_dir}", "{output_path}"],
     }
 
+
+def wat_project(source):
+    return {
+        "files": [{"path": "main.wat", "content": source}],
+        "prepare": [["python3", "-c", 'from pathlib import Path; from wasmtime import wat2wasm; Path("main.wasm").write_bytes(wat2wasm(Path("main.wat").read_text()))']],
+        "run": ["./main.wasm", "{input_dir}", "{output_path}"],
+    }
 
 async def main():
     cfg = load_config(ReleaseConfig, [str(Path(__file__).with_name("release.yaml"))])
@@ -88,14 +96,22 @@ async def main():
         description, _ = await invoke(f"describe-{problem}", "describe-problem",
                                       {"problem": {"origin": "bundled", "directory": problem}})
         assert description.verdict.valid and description.output["problem_config"]["baseline"].endswith(".cpp")
+        assert "2147483648" in description.output["prompt"] and "30000000000" in description.output["prompt"]
 
-    source = (ROOT / "tests/candidates/graph.py").read_text()
-    fast = project(source)
+    source = (ROOT / "tests/candidates/graph.cpp").read_text()
+    bad = cpp_project('#include <nonexistent_wasi_header.h>\n' + source)
+    try:
+        await invoke("compile-error", "evaluate-code", {"problem": reference, "project": bad})
+    except RuntimeError as error:
+        assert "project preparation failed" in str(error), str(error)
+        (evidence / "runs/compile-error/error.json").write_text(json.dumps({"error": str(error)}))
+    else:
+        raise AssertionError("invalid C++ unexpectedly compiled")
+
     for name, candidate, reason in (
-        ("wrong", project("import sys\nfrom pathlib import Path\nPath(sys.argv[2]).write_text('wrong\\n')"), "wrong_output"),
-        ("crash", project("raise RuntimeError('deliberate candidate failure')"), "execution_failure"),
-        ("python", fast, "pass"),
-        ("javascript", project((ROOT / "tests/candidates/graph.js").read_text(), executable="node", filename="main.js"), "pass"),
+        ("wrong", cpp_project('#include <fstream>\nint main(int,char**v){std::ofstream(v[2])<<"wrong\\n";}'), "wrong_output"),
+        ("crash", wat_project('(module (func (export "_start") unreachable))'), "execution_failure"),
+        ("cpp", cpp_project(source), "pass"),
     ):
         given = {"problem": reference, "project": candidate}
         outcome, workspace = await invoke(name, "evaluate-code", given)
@@ -105,8 +121,6 @@ async def main():
         altered["candidate"]["sha256"] = "0" * 64
         assert not verify_output(manifest, "evaluate_code", given, altered, workspace).valid
 
-    # A separate venv proves dependencies install through the sandbox proxy, rather
-    # than being accidentally imported from the plugin's own environment.
     pyproject = '[project]\nname="graph-candidate"\nversion="0.0.0"\nrequires-python=">=3.12"\ndependencies=[' + json.dumps(cfg.dependency) + ']\n'
     with TemporaryDirectory(prefix="code-optimize-lock-") as temporary:
         dependency_root = Path(temporary)
@@ -115,12 +129,14 @@ async def main():
         if await process.wait() != 0:
             raise RuntimeError("candidate dependency locking failed")
         locked = (dependency_root / "uv.lock").read_text()
-    dependent = project("import six\nassert isinstance(1, six.integer_types)\n" + source,
-                        executable=".venv/bin/python", files=[
-                            {"path": "pyproject.toml", "content": pyproject},
-                            {"path": "uv.lock", "content": locked}],
-                        prepare=[["uv", "sync", "--frozen", "--python", "python3"]])
-    outcome, _ = await invoke("python-dependency", "evaluate-code", {"problem": reference, "project": dependent})
+    generator = 'from pathlib import Path; import six; assert six.PY3; Path("dependency.h").write_text("#define DEPENDENCY_READY 1\\n")'
+    dependent = cpp_project('#include "dependency.h"\nstatic_assert(DEPENDENCY_READY == 1);\n' + source,
+                            files=[{"path": "pyproject.toml", "content": pyproject},
+                                   {"path": "uv.lock", "content": locked},
+                                   {"path": "generate.py", "content": generator}],
+                            prepare=[["uv", "sync", "--frozen", "--python", "python3"],
+                                     [".venv/bin/python", "generate.py"]])
+    outcome, _ = await invoke("build-dependency", "evaluate-code", {"problem": reference, "project": dependent})
     assert outcome.verdict.valid, outcome.output["summary"]
 
     def stage(workspace):

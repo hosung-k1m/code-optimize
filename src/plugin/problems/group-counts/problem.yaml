@@ -4,7 +4,9 @@ id: group-counts
 prompt: prompt.md
 baseline: baseline.cpp
 execution:
-  runtime: project_v1
+  runtime: wasi_project_v1
+  wasi_memory_bytes: 2147483648
+  wasi_fuel: 30000000000
   interface: executable_directory_v1
   per_trial_timeout_seconds: 2.0
   total_timeout_seconds: 60.0

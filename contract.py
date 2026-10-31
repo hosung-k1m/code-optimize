@@ -80,13 +80,15 @@ class CaseConfig(Output):
 
 @dataclass
 class ExecutionSettings(Output):
-    runtime: Annotated[str, "Required runtime; supports project_v1"]
+    runtime: Annotated[str, "Required runtime; supports wasi_project_v1"]
     interface: Annotated[str, "Required program interface; supports executable_directory_v1"]
     per_trial_timeout_seconds: Annotated[float, "Maximum guarded execution duration"]
     total_timeout_seconds: Annotated[float, "Maximum complete assessment duration"]
     max_source_bytes: Annotated[int, "Maximum candidate source size"]
     max_output_bytes: Annotated[int, "Maximum accepted result file size"]
     max_log_bytes: Annotated[int, "Maximum retained combined stdout and stderr bytes"]
+    wasi_memory_bytes: Annotated[int, "Maximum WASI linear memory bytes"]
+    wasi_fuel: Annotated[int, "Maximum WASI instruction fuel per trial"]
 
 
 @dataclass
@@ -128,9 +130,13 @@ class RuntimeIdentity(Output):
     clock: Annotated[str, "Elapsed-time clock name"]
     resolution_ns: Annotated[int, "Elapsed-time clock resolution in nanoseconds"]
     tools: Annotated[list[str], "Resolved available tool executables"]
+    wasmtime_version: Annotated[str, "Embedded Wasmtime version"]
+    zig_version: Annotated[str, "Bundled Zig version"]
+    wasi_memory_bytes: Annotated[int, "WASI linear memory cap"]
+    wasi_fuel: Annotated[int, "WASI instruction fuel budget"]
 
 
-BASELINE_PREPARE = [["c++", "--version"], ["c++", "-std=c++17", "-O2", "baseline.cpp", "-o", "baseline"]]
+BASELINE_PREPARE = [["python3", "-m", "ziglang", "c++", "-target", "wasm32-wasi", "-O2", "-std=c++17", "-fno-exceptions", "baseline.cpp", "-o", "baseline.wasm"]]
 
 
 @dataclass

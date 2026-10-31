@@ -2,10 +2,12 @@ import heapq
 import os
 import shutil
 import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 
 import pytest
+import wasmtime
 
 from contract import ProblemReference
 from plugin.bundles import load_problem
@@ -13,13 +15,37 @@ from plugin.bundles import load_problem
 PROBLEMS = Path(__file__).parents[1] / "src" / "plugin" / "problems"
 
 
+def _compile(source, executable):
+    subprocess.run(
+        [sys.executable, "-m", "ziglang", "c++", "-target", "wasm32-wasi", "-fno-exceptions", "-std=c++17", "-O2", str(source), "-o", str(executable)],
+        check=True,
+        cwd=executable.parent,
+    )
+
+
+def _run(executable, inputs, output):
+    config = wasmtime.Config()
+    config.consume_fuel = True
+    engine = wasmtime.Engine(config)
+    store = wasmtime.Store(engine)
+    store.set_limits(memory_size=2147483648)
+    store.set_fuel(30000000000)
+    wasi = wasmtime.WasiConfig()
+    wasi.argv = ["baseline.wasm", "/input", "/output/" + output.name]
+    wasi.preopen_dir(str(inputs), "/input")
+    wasi.preopen_dir(str(output.parent), "/output")
+    store.set_wasi(wasi)
+    linker = wasmtime.Linker(engine)
+    linker.define_wasi()
+    module = wasmtime.Module.from_file(engine, str(executable))
+    linker.instantiate(store, module).exports(store)["_start"](store)
+
+
 @pytest.mark.parametrize("problem", ["group-counts", "set-intersection"])
 def test_bundled_baseline_matches_independent_golden_outputs(problem, tmp_path):
     bundle = load_problem(ProblemReference(origin="bundled", directory=problem), tmp_path)
-    executable = tmp_path / "baseline"
-    subprocess.run(
-        ["c++", "-std=c++17", "-O2", str(PROBLEMS / problem / "baseline.cpp"), "-o", str(executable)], check=True
-    )
+    executable = tmp_path / "baseline.wasm"
+    _compile(PROBLEMS / problem / "baseline.cpp", executable)
     for case in bundle.config.cases:
         fixture_dir = tmp_path / case.id
         fixture_dir.mkdir()
@@ -28,7 +54,7 @@ def test_bundled_baseline_matches_independent_golden_outputs(problem, tmp_path):
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(content)
         output_path = tmp_path / f"{case.id}.result"
-        subprocess.run([str(executable), str(fixture_dir), str(output_path)], check=True)
+        _run(executable, fixture_dir, output_path)
         if problem == "group-counts":
             values = [int(value) for value in (fixture_dir / "data.txt").read_text().split()]
             expected = repr(sorted(Counter(values).items()))
@@ -41,11 +67,8 @@ def test_bundled_baseline_matches_independent_golden_outputs(problem, tmp_path):
 
 @pytest.fixture(scope="module")
 def shortest_paths_baseline(tmp_path_factory):
-    executable = tmp_path_factory.mktemp("shortest-paths") / "baseline"
-    subprocess.run(
-        ["c++", "-std=c++17", "-O2", str(PROBLEMS / "repeated-shortest-paths" / "baseline.cpp"), "-o", str(executable)],
-        check=True,
-    )
+    executable = tmp_path_factory.mktemp("shortest-paths") / "baseline.wasm"
+    _compile(PROBLEMS / "repeated-shortest-paths" / "baseline.cpp", executable)
     return executable
 
 
@@ -85,14 +108,14 @@ def test_shortest_paths_baseline_matches_independent_oracle(shortest_paths_basel
     fixture.mkdir()
     (fixture / "graph.txt").write_bytes(bundle.inputs[case]["graph.txt"])
     output = tmp_path / "result"
-    subprocess.run([str(shortest_paths_baseline), str(fixture), str(output)], check=True)
+    _run(shortest_paths_baseline, fixture, output)
     assert output.read_bytes() == _shortest_paths_oracle(fixture / "graph.txt")
 
 
 def test_shortest_paths_edge_cases(shortest_paths_baseline, tmp_path):
     (tmp_path / "graph.txt").write_text("5 5 7\n0 1 9\n0 1 2\n1 2 0\n2 2 7\n3 4 1\n0 2\n2 0\n0 0\n0 4\n3 4\n0 2\n4 3\n")
     output = tmp_path / "result"
-    subprocess.run([str(shortest_paths_baseline), str(tmp_path), str(output)], check=True)
+    _run(shortest_paths_baseline, tmp_path, output)
     assert output.read_bytes() == b"2\n2\n0\n-1\n1\n2\n1\n"
 
 
@@ -146,9 +169,8 @@ def test_workspace_bundle_rejects_oversized_baseline(tmp_path):
         load_problem(ProblemReference(origin="workspace", directory="bundle"), root.parent)
 
 
-@pytest.mark.parametrize("command", [["python3", "graph.py"], ["node", "graph.js"]])
 @pytest.mark.parametrize("case", ["mesh", "disconnected", "edge"])
-def test_graph_candidates_match_baseline(command, case, shortest_paths_baseline, tmp_path):
+def test_graph_cpp_candidate_matches_baseline(case, shortest_paths_baseline, tmp_path):
     fixture = tmp_path / "input"
     fixture.mkdir()
     if case == "edge":
@@ -161,9 +183,8 @@ def test_graph_candidates_match_baseline(command, case, shortest_paths_baseline,
         shutil.copy(PROBLEMS / "repeated-shortest-paths" / "fixtures" / case / "graph.txt", fixture)
     baseline_output = tmp_path / "baseline-result"
     candidate_output = tmp_path / "candidate-result"
-    subprocess.run([str(shortest_paths_baseline), str(fixture), str(baseline_output)], check=True)
-    candidate = Path(__file__).parent / "candidates" / command[1]
-    subprocess.run([command[0], str(candidate), str(fixture), str(candidate_output)], check=True)
-    assert (
-        candidate_output.read_bytes() == baseline_output.read_bytes() == _shortest_paths_oracle(fixture / "graph.txt")
-    )
+    _run(shortest_paths_baseline, fixture, baseline_output)
+    candidate = tmp_path / "candidate.wasm"
+    _compile(Path(__file__).parent / "candidates" / "graph.cpp", candidate)
+    _run(candidate, fixture, candidate_output)
+    assert candidate_output.read_bytes() == baseline_output.read_bytes() == _shortest_paths_oracle(fixture / "graph.txt")
