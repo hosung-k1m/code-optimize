@@ -99,15 +99,16 @@ The plugin uses the installed Python environment, an empty runtime network-host
 list and workspace-only writes. It installs no dependencies during a trial.
 
 The installed-package harness, renderer preview and release checks are documented
-in [tests/RELEASE.md](tests/RELEASE.md). Run that harness with RUSH Lab Dev's bundled
+in [tests/RELEASE.md](tests/RELEASE.md). Run that harness with RUSH Lab's installed
 Python to check actual MCP calls and the macOS desktop sandbox.
 
-Version 0.1.0 is `in-development` and supports macOS execution. Windows and Linux
+Version 0.1.1 is `ready` for use in RUSH Lab and supports macOS execution. Windows and Linux
 execution fail explicitly. It evaluates cooperative Python submissions within the
 existing desktop sandbox; fixtures are public. It enforces execution deadlines,
 accepted-result sizes and retained-log limits. CPU/RAM quotas, hard disk-write
 quotas and hostile-code isolation are not provided.
 
-Publishing checks every plugin rule. After the remaining release checks pass,
-publish only with the repository owner's approval; RUSH Lab accepts a public
-GitHub repository, and the owner accepts its submission terms themselves.
+RUSH Lab accepts a public GitHub repository. Publish a new manifest version for
+each update; published versions cannot be replaced. Keep `status: ready` to make
+the plugin available for installation and task execution. The owner accepts any
+submission terms themselves.
