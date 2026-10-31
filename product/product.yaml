@@ -1,22 +1,10 @@
 _ > nanoagent.plugin.v0001.ProductConfig:
 tagline: Beat a naive C++ graph solver inside a fixed WASI sandbox
-summary: >-
-  Optimize repeated shortest-path queries on weighted, undirected graphs. The naive
-  C++17 baseline runs Dijkstra for each query; your solution must compile to WASIp1.
-  Both run in the plugin's embedded Wasmtime sandbox with one execution thread,
-  2147483648 bytes (2 GiB) of linear memory and 30000000000 instruction fuel units
-  per trial. Threads, shared memory and network access are disabled during execution.
-  Docker and changes to RUSH Lab are unnecessary. Start by asking: “List the problems,
-  describe bundled repeated-shortest-paths and its sandbox configuration, then compile
-  and benchmark a faster solution. Fix build errors and retry until you have measured
-  results.” The plugin bundles Zig for C/C++ and accepts other languages that produce
-  WASIp1. Dependencies and compilation are prepared before timing. The graph benchmark
-  has mesh and disconnected cases with 1444 queries each, 1 warmup and 5 measured pairs
-  per case, alternating order, exact output comparisons, minimum 1.10× suite speedup,
-  maximum 1.05× case slowdown and relative timing MAD at most 0.10. Each graph trial has 4
-  seconds; an assessment has 120 seconds. Results show median times, speedups, build
-  logs and a deterministic verdict. Limits apply to guest execution; wall-clock times
-  still depend on the host CPU and runtime overhead is outside the linear-memory cap.
+summary: |-
+  Optimize code and compare it with the baseline using measured elapsed times, exact output checks and a deterministic verdict.
+
+  Copy this prompt to begin:
+  "List the problems and describe bundled repeated-shortest-paths. Implement a faster C++17 solution, then call evaluate-code to compile and benchmark it. Fix build errors and retry until you have a complete measured report. Compare baseline vs optimized times, output matches and speedups for every case, and show the deterministic verdict. Do not stop after describing the problem or printing code; finish with the evaluate-code result."
 highlights:
   - Naive C++ baseline and optimized WASI modules run under identical enforced limits
   - Embedded compiler and runtime; no Docker, VM or desktop modification

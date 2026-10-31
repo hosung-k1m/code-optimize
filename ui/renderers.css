@@ -7,3 +7,5 @@ details { margin-block: 1rem; }
 
 .measurements { overflow-x: auto; max-width: 100%; }
 .measurements table { min-width: 32rem; }
+.measurements caption { text-align: left; padding-block: .5rem; color: var(--muted); }
+.verdict { font-weight: 600; padding: .75rem; border: 1px solid var(--border); border-radius: .5rem; }

@@ -37,6 +37,7 @@ function describe(value) {
   const config = value.problem_config;
   return h('section', {}, [
     h('h2', {text: config.id}),
+    h('p', {text: 'This is the problem description. Ask the agent to implement a faster solution and run evaluate-code to see baseline vs optimized timings.'}),
     markdown(value.prompt),
     settings(config),
     h('p', {text: value.case_summaries.join(' · ')}),
@@ -46,8 +47,9 @@ function describe(value) {
 }
 
 function medianTime(trials, caseId, implementation) {
-  const samples = trials.filter(item => item.case_id === caseId && item.implementation === implementation && !item.warmup)
+  const samples = trials.filter(item => item.case_id === caseId && item.implementation === implementation && !item.warmup && item.status === 'ok')
     .map(item => item.elapsed_ns).sort((a, b) => a - b);
+  if (!samples.length) return 'No successful measurements';
   const middle = Math.floor(samples.length / 2);
   const nanoseconds = samples.length % 2 ? samples[middle] : (samples[middle - 1] + samples[middle]) / 2;
   return `${number(nanoseconds / 1e6)} ms`;
@@ -66,12 +68,16 @@ function evaluate(value, {verdict}) {
     h('td', {text: number(item.candidate_relative_mad)}),
   ]));
   return h('section', {}, [
-    h('h2', {text: reasons[summary.reason]}),
+    h('h2', {text: 'Baseline vs optimized code'}),
+    h('p', {class: 'verdict', text: `${summary.eligible ? 'Accepted' : 'Not accepted'} · ${reasons[summary.reason]}`}),
+    h('p', {text: `Problem: ${value.problem_config.id}`}),
     h('p', {text: `Suite speedup ${number(summary.suite_speedup)}× · ${value.trials.length} guarded executions`}),
     h('div', {class: 'measurements', role: 'region', 'aria-label': 'Case measurements', tabindex: '0'}, [h('table', {}, [
-      h('thead', {}, [h('tr', {}, ['Case', 'Output', 'Baseline median', 'Candidate median', 'Speedup', 'Baseline MAD', 'Candidate MAD'].map(text => h('th', {text})))]),
+      h('caption', {text: 'Median elapsed time of successful trials (warmups excluded)'}),
+      h('thead', {}, [h('tr', {}, ['Case', 'Exact output', 'Baseline time', 'Optimized time', 'Speedup', 'Baseline MAD', 'Optimized MAD'].map(text => h('th', {text})))]),
       h('tbody', {}, rows),
     ])]),
+    h('p', {text: 'Speedup is the median of paired baseline / optimized elapsed times; suite speedup is the geometric mean across cases. MAD reports timing variability.'}),
     h('p', {text: `Wasmtime ${value.runtime.wasmtime_version} · Zig ${value.runtime.zig_version} · one WASI execution thread · ${value.runtime.wasi_memory_bytes} bytes linear memory · ${value.runtime.wasi_fuel} fuel units per trial`}),
     h('p', {text: `Timing host: ${value.runtime.platform} ${value.runtime.architecture}. Runtime overhead is outside the guest memory cap.`}),
     h('p', {text: `Report: ${value.report_path}`}),

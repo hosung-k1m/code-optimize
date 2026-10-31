@@ -1,7 +1,7 @@
 _ > nanoagent.plugin.v0001.ManifestConfig:
 id: code-optimize
 name: Code Optimize
-version: 0.3.0
+version: 0.3.1
 status: ready
 spec: nanoagent.plugin/v0001
 
