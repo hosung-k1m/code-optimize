@@ -1,21 +1,21 @@
-_ > nanoagent.plugin.v0002.ManifestConfig:
+_ > nanoagent.plugin.v0001.ManifestConfig:
 id: code-optimize
 name: Code Optimize
-version: 0.4.0
+version: 0.3.1
 status: ready
-spec: nanoagent.plugin/v0002
+spec: nanoagent.plugin/v0001
 
-runtime > nanoagent.plugin.v0002.RuntimeConfig:
+runtime > nanoagent.plugin.v0001.RuntimeConfig:
   type: mcp_stdio
   command: [uv, run, --frozen, python, -m, plugin]
 
-permissions > nanoagent.plugin.v0002.PermissionsConfig:
-  network > nanoagent.plugin.v0002.NetworkConfig:
+permissions > nanoagent.plugin.v0001.PermissionsConfig:
+  network > nanoagent.plugin.v0001.NetworkConfig:
     hosts: [pypi.org, files.pythonhosted.org, registry.npmjs.org, index.crates.io, static.crates.io, proxy.golang.org, sum.golang.org, github.com, codeload.github.com, release-assets.githubusercontent.com]
-  filesystem > nanoagent.plugin.v0002.FilesystemConfig:
+  filesystem > nanoagent.plugin.v0001.FilesystemConfig:
     write: [workspace]
 
-tools > dict[contract.Tool, nanoagent.plugin.v0002.ToolConfig]:
+tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
   list_problems:
     description: Discover exact problem references before choosing one
   describe_problem:
@@ -23,7 +23,7 @@ tools > dict[contract.Tool, nanoagent.plugin.v0002.ToolConfig]:
   evaluate_code:
     description: Compile a project to WASI, execute it with fixed memory and instruction limits, and return measured correctness and timing
 
-tasks > dict[contract.Task, nanoagent.plugin.v0002.TaskConfig]:
+tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
   list-problems:
     description: &list_instructions >-
       Call this first to list exact bundled and workspace problem references. The default
@@ -62,26 +62,3 @@ tasks > dict[contract.Task, nanoagent.plugin.v0002.TaskConfig]:
     tools: [evaluate_code]
     reference: null
     instructions: *evaluate_instructions
-
-  optimize-code:
-    description: >-
-      Implement a faster C++17 solution for a listed problem. Call this task whenever
-      the user asks to implement or optimize a solution, rather than generating source
-      in the outer chat. Its agent submits the candidate and NanoAgent automatically
-      compiles, benchmarks, and verifies it, returning measured results for every case.
-    runner: agent
-    tools: [describe_problem]
-    reference: null
-    evaluator: evaluate_code
-    instructions: |-
-      Call describe_problem for the exact input problem reference. Read its prompt,
-      baseline, input/output interface, resource limits, and benchmark policy.
-      Implement a faster C++17 program with standard headers. Submit an EvaluateInput:
-      problem must equal the task input problem; project.files must contain the complete
-      UTF-8 sources; project.prepare must contain the build argv arrays; project.run
-      must be [./main.wasm, '{input_dir}', '{output_path}'].
-      Compile with [python3, -m, ziglang, c++, -target, wasm32-wasi, -fno-exceptions,
-      -O2, -std=c++17, main.cpp, -o, main.wasm].
-      Call submit once the candidate is complete. Do not invent measurements or a report.
-      Submission ends your work. NanoAgent then calls evaluate_code to compile and run
-      both implementations and automatically runs the deterministic verifier.

@@ -3,8 +3,7 @@
 Optimize repeated shortest-path queries against a naive C++ baseline. The plugin
 compiles and executes both programs inside embedded WebAssembly/WASI, with fixed
 resource limits and a deterministic verifier. It needs no Docker, virtual machine,
-external compiler installation. RUSH Lab must support `nanoagent.plugin/v0002`
-for automatic evaluation after submission.
+external compiler installation, or changes to NanoAgent/RUSH Lab.
 
 ## Tools
 
@@ -20,23 +19,17 @@ for automatic evaluation after submission.
 |---|---|---|
 | `list-problems` | `tool`, `list_problems` | Discovers problems without guessing paths |
 | `describe-problem` | `tool`, `describe_problem` | Explains the problem and execution configuration |
-| `evaluate-code` | `tool`, `evaluate_code` | Builds, runs, measures and verifies a supplied project |
-| `optimize-code` | `agent`, then host `evaluate_code` | Implements a solution, submits its typed project, then automatically builds, benchmarks and verifies it |
+| `evaluate-code` | `tool`, `evaluate_code` | Builds, runs, measures and verifies a submitted project |
 
 All tasks use `reference: null`; the baseline runs alongside the candidate.
-`optimize-code` uses `nanoagent.plugin/v0002` and declares `evaluator: evaluate_code`.
-The task agent sees `describe_problem` and a `submit` tool whose schema is
-`EvaluateInput`: the problem reference, source files, and build/run commands.
-An accepted submission stops the agent immediately. NanoAgent then runs
-`evaluate_code` and the deterministic verifier without another model decision.
-The returned task output is the measured `EvaluateOutput`; compilation or execution
-errors fail explicitly. The chat does not need to call `evaluate-code` separately.
+Task descriptions include the complete execution/retry guidance, so they work
+with the existing RUSH Lab chat tool interface.
 
 Start with:
 
-> List the problems, then use optimize-code for bundled repeated-shortest-paths.
-> Implement a faster C++17 solution and submit the project for automatic
-> compilation, benchmarking, and deterministic verification.
+> List the problems, describe bundled repeated-shortest-paths and its sandbox
+> configuration, then compile and benchmark a faster solution. Fix build errors
+> and retry until you have measured results.
 
 ### Fixed execution environment
 
@@ -155,8 +148,7 @@ uv run ruff check .
 uv lock --check
 ```
 
-Version 0.4.0 adds typed candidate submission followed by automatic evaluation
-and verification, requiring the v0002 NanoAgent engine update. Version 0.3.0
-introduced WASI execution. Host process supervision currently supports macOS;
-Windows/Linux hosts fail explicitly. See
+Version 0.3.0 replaces native candidate execution with WASI. Host process
+supervision currently supports macOS; Windows/Linux hosts fail explicitly.
+No app rebuild is required for this plugin update. See
 [tests/RELEASE.md](tests/RELEASE.md) for checks through the installed RUSH Lab runtime.

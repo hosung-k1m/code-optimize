@@ -17,7 +17,6 @@ class Task(Enum):
     LIST_PROBLEMS = "list-problems"
     DESCRIBE_PROBLEM = "describe-problem"
     EVALUATE_CODE = "evaluate-code"
-    OPTIMIZE_CODE = "optimize-code"
 
 
 @dataclass
@@ -219,5 +218,4 @@ TASKS = {
     Task.LIST_PROBLEMS: (ListProblemsInput, ListProblemsOutput),
     Task.DESCRIBE_PROBLEM: (DescribeInput, DescribeOutput),
     Task.EVALUATE_CODE: (EvaluateInput, EvaluateOutput),
-    Task.OPTIMIZE_CODE: (DescribeInput, EvaluateOutput),
 }

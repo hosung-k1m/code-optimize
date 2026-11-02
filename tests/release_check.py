@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from nanoagent.core.agent import Agent, Reply, StopReason, ToolCall
 from nanoagent.plugin import sandbox
 from nanoagent.plugin.install import Installs
 from nanoagent.plugin.package import inspect_package, pack
@@ -68,30 +67,18 @@ async def main():
         "package_sha256": entry["sha256"], "package_bytes": len(data),
     }, indent=2))
 
-    async def invoke(name, task, given, stage=None, candidate=None):
+    async def invoke(name, task, given, stage=None):
         workspace = evidence / "runs" / name
         workspace.mkdir(parents=True)
         if stage:
             stage(workspace)
-
-        class SubmitCandidate:
-            calls = 0
-
-            async def query(self, messages, tools, **kwargs):
-                self.calls += 1
-                assert self.calls == 1, "the model must stop immediately after submission"
-                assert "evaluate_code" not in {tool["function"]["name"] for tool in tools}
-                return Reply(None, [ToolCall("candidate", "submit", json.dumps(candidate))])
-
-        model = SubmitCandidate()
         outcome = await run_task(
             manifest, manifest.task(task), given, workspace,
-            make_agent=None if candidate is None else lambda system: Agent(model, [], system_prompt=system),
-            make_decider=None, timeout=cfg.outer_timeout_seconds,
+            make_agent=None, make_decider=None, timeout=cfg.outer_timeout_seconds,
             on_event=lambda *args: None, stage=lambda path: None,
         )
         row = {"name": name, "valid": outcome.verdict.valid, "verdict": outcome.verdict.message}
-        if task in ("evaluate-code", "optimize-code"):
+        if task == "evaluate-code":
             row.update(reason=outcome.output["summary"]["reason"],
                        speedup=outcome.output["summary"]["suite_speedup"],
                        correct=all(case["outputs_match"] for case in outcome.output["summary"]["cases"]))
@@ -99,8 +86,6 @@ async def main():
         rows.append(row)
         (evidence / "results.json").write_text(json.dumps(rows, indent=2))
         print(json.dumps(row), flush=True)
-        if candidate is not None:
-            assert outcome.agent.stop_reason is StopReason.SUBMITTED and model.calls == 1
         return outcome, workspace
 
     listing, _ = await invoke("list", "list-problems", {})
@@ -114,11 +99,6 @@ async def main():
         assert "2147483648" in description.output["prompt"] and "30000000000" in description.output["prompt"]
 
     source = (ROOT / "tests/candidates/graph.cpp").read_text()
-    automatic, _ = await invoke(
-        "automatic-submission", "optimize-code", {"problem": reference},
-        candidate={"problem": reference, "project": cpp_project(source)},
-    )
-    assert automatic.output["trials"] and all(case["outputs_match"] for case in automatic.output["summary"]["cases"])
     bad = cpp_project('#include <nonexistent_wasi_header.h>\n' + source)
     try:
         await invoke("compile-error", "evaluate-code", {"problem": reference, "project": bad})
