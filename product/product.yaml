@@ -1,16 +1,16 @@
-_ > nanoagent.plugin.v0001.ProductConfig:
+_ > nanoagent.plugin.v0002.ProductConfig:
 tagline: Beat a naive C++ graph solver inside a fixed WASI sandbox
 summary: |-
   Optimize code and compare it with the baseline using measured elapsed times, exact output checks and a deterministic verdict.
 
   Copy this prompt to begin:
-  "List the problems and describe bundled repeated-shortest-paths. Implement a faster C++17 solution, then call evaluate-code to compile and benchmark it. Fix build errors and retry until you have a complete measured report. Compare baseline vs optimized times, output matches and speedups for every case, and show the deterministic verdict. Do not stop after describing the problem or printing code; finish with the evaluate-code result."
+  "List the problems, then use optimize-code for bundled repeated-shortest-paths. Implement a faster C++17 solution and submit its source files and build/run commands. Let NanoAgent automatically compile, benchmark, and verify the submission. Show baseline vs optimized times, output matches and speedups for every case, and the deterministic verdict."
 highlights:
   - Naive C++ baseline and optimized WASI modules run under identical enforced limits
-  - Embedded compiler and runtime; no Docker, VM or desktop modification
+  - Embedded compiler and runtime; no Docker, VM or external compiler installation
   - Exact output bytes, measured median times and deterministic acceptance
-  - Compiler errors lead to revision and another measured evaluation
+  - Typed candidate submission starts automatic compilation, benchmarking and verification
 steps:
   - Ask the agent to discover and describe the graph problem and current sandbox limits
-  - Build a WASIp1 project with declared dependencies using bundled Zig or another compiler
-  - Compile, execute and inspect the measured report; fix errors and evaluate again
+  - Ask optimize-code to implement and submit a C++17 candidate project
+  - NanoAgent compiles, benchmarks and verifies it automatically; inspect the measured report

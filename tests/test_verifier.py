@@ -323,6 +323,20 @@ def write_report(output, report_path):
     report_path.write_text(json.dumps(asdict(output), sort_keys=True), encoding="utf-8")
 
 
+@pytest.mark.parametrize("candidate_ns, accepted", [(100, True), (220, False)])
+def test_optimization_task_verifies_the_automatically_evaluated_report(tmp_path, candidate_ns, accepted):
+    from contract import DescribeInput
+    from verifier import verify_task
+
+    root, output, _, _ = make_valid_assessment(tmp_path, candidate_ns=candidate_ns)
+    arguments = DescribeInput(output.problem)
+    verdict = verify_task("optimize-code", arguments, output, None, str(root))
+    assert verdict["valid"] is accepted
+    assert verdict["message"] == output.summary.reason
+    changed = DescribeInput(ProblemReference("bundled", "another-problem"))
+    assert not verify_task("optimize-code", changed, output, None, str(root))["valid"]
+
+
 def test_report_artifacts_hashes_schedule_and_json_are_bound(tmp_path):
     root, output, source, report_path = make_valid_assessment(tmp_path)
     assert validate_evaluation(output, root, source)[0]

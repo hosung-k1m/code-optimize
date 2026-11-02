@@ -1,7 +1,9 @@
 # Code Optimize release checks
 
-Version 0.3.0 is a plugin-only update: Zig and Wasmtime are locked plugin
-dependencies. Existing RUSH Lab runs it without Docker, a VM or host changes.
+Version 0.4.0 requires RUSH Lab's v0002 engine for automatic evaluation after
+typed candidate submission. Deploy that engine before publishing this plugin.
+Zig and Wasmtime remain locked plugin dependencies; no external compiler or VM
+installation is needed.
 
 From the plugin root:
 
@@ -28,6 +30,9 @@ Preserve each previous evidence directory before running again.
 
 The installed harness checks:
 
+- A typed candidate submission stops the agent after one model request, then
+  NanoAgent automatically compiles, benchmarks, and verifies the report. The
+  evaluator is not exposed as an agent tool.
 - Listing and descriptions of all problems, including exact sandbox limits.
 - An actual compiler error, then a corrected C++ project producing measured output.
 - Wrong and trapping WASI candidates with deterministic failed verdicts.
@@ -57,6 +62,6 @@ currently implemented for macOS only.
 
 [renderer_preview.py](renderer_preview.py) can serve the actual renderers with
 recorded reports. After pushing and publishing, create a new session in regular
-RUSH Lab and ask it to describe the problem, compile a candidate, fix build errors,
-and evaluate again. Confirm the card shows actual median timings and the fixed
+RUSH Lab and ask it to run `optimize-code` for the problem. Confirm the graph shows
+submission before evaluation and verification, and the card shows median timings and the fixed
 WASI configuration. Existing sessions retain the version they previously ran.

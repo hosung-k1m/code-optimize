@@ -118,14 +118,18 @@ def verify_task(task, arguments, output, reference, workspace):
         if not isinstance(arguments, DescribeInput) or not isinstance(output, DescribeOutput):
             return result(False, "problem description output is invalid")
         return verify_output(Tool.DESCRIBE_PROBLEM, arguments, output, workspace)
-    if task_name is not Task.EVALUATE_CODE or not isinstance(arguments, EvaluateInput):
+    if task_name is Task.OPTIMIZE_CODE and isinstance(arguments, DescribeInput):
+        project = None
+    elif task_name is Task.EVALUATE_CODE and isinstance(arguments, EvaluateInput):
+        project = arguments.project
+    else:
         return result(False, "task arguments do not match the declared task")
     if not isinstance(output, EvaluateOutput):
         return result(False, "assessment output is invalid")
     try:
         if output.problem != arguments.problem:
             return result(False, "assessment does not match the requested problem reference")
-        valid, message = validate_evaluation(output, workspace, arguments.project)
+        valid, message = validate_evaluation(output, workspace, project)
     except (OSError, ValueError, StopIteration, TypeError):
         return result(False, "evaluation artifacts or evidence are invalid")
     if not valid:

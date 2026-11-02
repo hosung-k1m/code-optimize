@@ -37,7 +37,7 @@ function describe(value) {
   const config = value.problem_config;
   return h('section', {}, [
     h('h2', {text: config.id}),
-    h('p', {text: 'This is the problem description. Ask the agent to implement a faster solution and run evaluate-code to see baseline vs optimized timings.'}),
+    h('p', {text: 'Ask the agent to optimize this problem. It submits the candidate; NanoAgent automatically builds, benchmarks, and verifies it.'}),
     markdown(value.prompt),
     settings(config),
     h('p', {text: value.case_summaries.join(' · ')}),
