@@ -9,13 +9,22 @@ from contract import (
     EvaluateOutput,
     ListProblemsInput,
     ListProblemsOutput,
+    OptimizeOutput,
     ProblemListing,
     ProblemReference,
     Task,
     Tool,
 )
 
-from .checks import result, valid_runtime, validate_config_values, validate_evaluation, validate_project
+from .checks import (
+    load_evaluation,
+    result,
+    valid_runtime,
+    validate_config_values,
+    validate_evaluation,
+    validate_project,
+)
+from .statistics import case_timings
 
 
 def verify_input(tool, value):
@@ -118,15 +127,18 @@ def verify_task(task, arguments, output, reference, workspace):
         if not isinstance(arguments, DescribeInput) or not isinstance(output, DescribeOutput):
             return result(False, "problem description output is invalid")
         return verify_output(Tool.DESCRIBE_PROBLEM, arguments, output, workspace)
-    if task_name is not Task.EVALUATE_CODE or not isinstance(arguments, EvaluateInput):
-        return result(False, "task arguments do not match the declared task")
-    if not isinstance(output, EvaluateOutput):
-        return result(False, "assessment output is invalid")
     try:
+        if task_name is Task.OPTIMIZE_CODE and isinstance(arguments, DescribeInput) and isinstance(output, OptimizeOutput):
+            output = load_evaluation(output, workspace)
+            project = None
+        elif task_name is Task.EVALUATE_CODE and isinstance(arguments, EvaluateInput) and isinstance(output, EvaluateOutput):
+            project = arguments.project
+        else:
+            return result(False, "task arguments or output do not match the declared task")
         if output.problem != arguments.problem:
             return result(False, "assessment does not match the requested problem reference")
-        valid, message = validate_evaluation(output, workspace, arguments.project)
-    except (OSError, ValueError, StopIteration, TypeError):
+        valid, message = validate_evaluation(output, workspace, project)
+    except (OSError, ValueError, StopIteration, TypeError, KeyError, AttributeError):
         return result(False, "evaluation artifacts or evidence are invalid")
     if not valid:
         return result(False, message)
@@ -137,4 +149,5 @@ def verify_task(task, arguments, output, reference, workspace):
         cases=output.summary.cases,
         assessment_id=output.assessment_id,
         fingerprint=output.fingerprint,
+        timings=case_timings(output),
     )

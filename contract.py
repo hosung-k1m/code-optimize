@@ -17,6 +17,7 @@ class Task(Enum):
     LIST_PROBLEMS = "list-problems"
     DESCRIBE_PROBLEM = "describe-problem"
     EVALUATE_CODE = "evaluate-code"
+    OPTIMIZE_CODE = "optimize-code"
 
 
 @dataclass
@@ -209,6 +210,13 @@ class EvaluateOutput(Output):
     report_path: Annotated[str, "Workspace-relative report artifact path"]
 
 
+@dataclass
+class OptimizeOutput(Output):
+    problem: Annotated[ProblemReference, "The problem evaluated by evaluate_code"]
+    assessment_id: Annotated[str, "Assessment identifier returned by evaluate_code"]
+    report_path: Annotated[str, "Report path returned by evaluate_code, copied exactly"]
+
+
 TOOLS = {
     Tool.LIST_PROBLEMS: (ListProblemsInput, ListProblemsOutput),
     Tool.DESCRIBE_PROBLEM: (DescribeInput, DescribeOutput),
@@ -218,4 +226,5 @@ TASKS = {
     Task.LIST_PROBLEMS: (ListProblemsInput, ListProblemsOutput),
     Task.DESCRIBE_PROBLEM: (DescribeInput, DescribeOutput),
     Task.EVALUATE_CODE: (EvaluateInput, EvaluateOutput),
+    Task.OPTIMIZE_CODE: (DescribeInput, OptimizeOutput),
 }

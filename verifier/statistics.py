@@ -7,6 +7,19 @@ from statistics import median
 from contract import CaseSummary, Summary
 
 
+def case_timings(report):
+    rows = []
+    for case in report.summary.cases:
+        row = {"case_id": case.case_id, "outputs_match": case.outputs_match, "speedup": case.speedup}
+        for implementation in ("baseline", "candidate"):
+            samples = [trial.elapsed_ns for trial in report.trials
+                       if trial.case_id == case.case_id and trial.implementation == implementation
+                       and not trial.warmup and trial.status == "ok"]
+            row[implementation + "_ns"] = median(samples) if samples else None
+        rows.append(row)
+    return rows
+
+
 def _fraction(value):
     return Fraction(str(value))
 

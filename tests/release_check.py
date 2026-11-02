@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from nanoagent.core.agent import Agent, Reply, ToolCall
 from nanoagent.plugin import sandbox
 from nanoagent.plugin.install import Installs
 from nanoagent.plugin.package import inspect_package, pack
@@ -67,21 +68,45 @@ async def main():
         "package_sha256": entry["sha256"], "package_bytes": len(data),
     }, indent=2))
 
-    async def invoke(name, task, given, stage=None):
+    async def invoke(name, task, given, stage=None, candidate=None):
         workspace = evidence / "runs" / name
         workspace.mkdir(parents=True)
         if stage:
             stage(workspace)
+
+        class MeasuredSubmission:
+            calls = 0
+
+            async def query(self, messages, tools, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    return Reply(None, [ToolCall("evaluate", "evaluate_code", json.dumps(candidate))])
+                if self.calls == 2:
+                    report = json.loads(messages[-1]["content"])
+                    submission = {key: report[key] for key in ("problem", "assessment_id", "report_path")}
+                    return Reply(None, [ToolCall("result", "submit", json.dumps(submission))])
+                assert self.calls == 3 and messages[-1]["content"] == "Submitted."
+                return Reply("Submitted the measured report.")
+
+        model = MeasuredSubmission()
+        events = []
         outcome = await run_task(
             manifest, manifest.task(task), given, workspace,
-            make_agent=None, make_decider=None, timeout=cfg.outer_timeout_seconds,
-            on_event=lambda *args: None, stage=lambda path: None,
+            make_agent=None if candidate is None else lambda system: Agent(model, [], system_prompt=system),
+            make_decider=None, timeout=cfg.outer_timeout_seconds,
+            on_event=lambda kind, data: events.append((kind, data)), stage=lambda path: None,
         )
         row = {"name": name, "valid": outcome.verdict.valid, "verdict": outcome.verdict.message}
         if task == "evaluate-code":
             row.update(reason=outcome.output["summary"]["reason"],
                        speedup=outcome.output["summary"]["suite_speedup"],
                        correct=all(case["outputs_match"] for case in outcome.output["summary"]["cases"]))
+        if candidate is not None:
+            assert model.calls == 3
+            assert [data["name"] for kind, data in events if kind == "task.tool"] == ["evaluate_code", "submit"]
+            assert events[-1][0] == "task.verdict"
+            row.update(speedup=outcome.verdict.details["speedup"],
+                       correct=all(case["outputs_match"] for case in outcome.verdict.details["cases"]))
         (workspace / "returned-output.json").write_text(json.dumps(outcome.output, indent=2))
         rows.append(row)
         (evidence / "results.json").write_text(json.dumps(rows, indent=2))
@@ -99,6 +124,12 @@ async def main():
         assert "2147483648" in description.output["prompt"] and "30000000000" in description.output["prompt"]
 
     source = (ROOT / "tests/candidates/graph.cpp").read_text()
+    automatic, _ = await invoke(
+        "agent-submission", "optimize-code", {"problem": reference},
+        candidate={"problem": reference, "project": cpp_project(source)},
+    )
+    assert len(automatic.verdict.details["timings"]) == 2
+    assert all(case["outputs_match"] for case in automatic.verdict.details["timings"])
     bad = cpp_project('#include <nonexistent_wasi_header.h>\n' + source)
     try:
         await invoke("compile-error", "evaluate-code", {"problem": reference, "project": bad})

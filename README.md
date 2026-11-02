@@ -19,17 +19,24 @@ external compiler installation, or changes to NanoAgent/RUSH Lab.
 |---|---|---|
 | `list-problems` | `tool`, `list_problems` | Discovers problems without guessing paths |
 | `describe-problem` | `tool`, `describe_problem` | Explains the problem and execution configuration |
-| `evaluate-code` | `tool`, `evaluate_code` | Builds, runs, measures and verifies a submitted project |
+| `evaluate-code` | `tool`, `evaluate_code` | Builds, runs, measures and verifies a supplied project |
+| `optimize-code` | `agent` | Implements and benchmarks a solution, submits the report reference, then receives automatic verification |
 
 All tasks use `reference: null`; the baseline runs alongside the candidate.
-Task descriptions include the complete execution/retry guidance, so they work
-with the existing RUSH Lab chat tool interface.
+`optimize-code` follows arxiv-source’s agent-task pattern on the existing
+`nanoagent.plugin/v0001` runtime. Its agent calls `describe_problem` and
+`evaluate_code`, correcting build errors before submitting an `OptimizeOutput`.
+That small typed result contains the problem, assessment ID, and report path,
+copied from the evaluator. After the agent ends, NanoAgent automatically runs
+`verify_task`, which reads the saved report, checks its evidence and acceptance
+policy, and provides measured case timings for the result card. The agent never
+judges acceptance or has to copy the full raw trial report into its submission.
 
 Start with:
 
-> List the problems, describe bundled repeated-shortest-paths and its sandbox
-> configuration, then compile and benchmark a faster solution. Fix build errors
-> and retry until you have measured results.
+> List the problems, then use optimize-code for bundled repeated-shortest-paths.
+> Implement and benchmark a faster C++17 solution, fix build errors, and submit
+> the measured report for automatic deterministic verification.
 
 ### Fixed execution environment
 

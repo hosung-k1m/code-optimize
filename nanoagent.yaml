@@ -1,7 +1,7 @@
 _ > nanoagent.plugin.v0001.ManifestConfig:
 id: code-optimize
 name: Code Optimize
-version: 0.3.1
+version: 0.4.1
 status: ready
 spec: nanoagent.plugin/v0001
 
@@ -62,3 +62,27 @@ tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
     tools: [evaluate_code]
     reference: null
     instructions: *evaluate_instructions
+
+  optimize-code:
+    description: >-
+      Implement and benchmark a faster C++17 solution for a listed problem. Call this
+      task when the user asks to implement or optimize code. Its agent describes the
+      problem, creates and evaluates the candidate, fixes compiler errors, and submits
+      the saved report reference. NanoAgent automatically verifies the submitted result.
+    runner: agent
+    tools: [describe_problem, evaluate_code]
+    reference: null
+    instructions: |-
+      Call describe_problem for the input problem. Read its prompt, baseline, interface,
+      resource limits and benchmark policy, then implement a faster C++17 solution.
+      Call evaluate_code with problem equal to the task input problem and a project
+      containing complete UTF-8 files, preparation argv arrays, and the run argv.
+      For C++ use [python3, -m, ziglang, c++, -target, wasm32-wasi, -fno-exceptions,
+      -O2, -std=c++17, main.cpp, -o, main.wasm] and run
+      [./main.wasm, '{input_dir}', '{output_path}']. Use standard headers.
+      Fix compilation errors and call evaluate_code again. Do not submit source code,
+      estimated timings, or an invented report. Once evaluate_code returns a complete
+      measured report, call submit with problem, assessment_id and report_path copied
+      exactly from that result. Do not rewrite the report or its artifacts.
+      End after submission. NanoAgent automatically verifies the saved report and shows
+      the measured timings and deterministic verdict, including a failed verdict.

@@ -323,6 +323,83 @@ def write_report(output, report_path):
     report_path.write_text(json.dumps(asdict(output), sort_keys=True), encoding="utf-8")
 
 
+@pytest.mark.parametrize("candidate_ns, accepted", [(100, True), (220, False)])
+def test_submitted_report_is_verified_and_gets_measured_case_timings(tmp_path, candidate_ns, accepted):
+    from contract import DescribeInput, OptimizeOutput
+    from verifier import verify_task
+
+    root, report, _, _ = make_valid_assessment(tmp_path, candidate_ns=candidate_ns)
+    submission = OptimizeOutput(report.problem, report.assessment_id, report.report_path)
+    verdict = verify_task("optimize-code", DescribeInput(report.problem), submission, None, str(root))
+    assert verdict["valid"] is accepted
+    assert verdict["message"] == report.summary.reason
+    assert verdict["details"]["timings"] == [{
+        "case_id": "one", "outputs_match": True, "speedup": report.summary.cases[0].speedup,
+        "baseline_ns": 220, "candidate_ns": candidate_ns,
+    }]
+    other = DescribeInput(ProblemReference("bundled", "other"))
+    assert not verify_task("optimize-code", other, submission, None, str(root))["valid"]
+
+
+def test_submitted_execution_failure_has_no_invented_candidate_timing(tmp_path):
+    from contract import DescribeInput, OptimizeOutput
+    from verifier import verify_task
+
+    root, report, _, path = make_valid_assessment(tmp_path)
+    for trial in report.trials:
+        if trial.implementation == "candidate":
+            trial.status, trial.exit_code, trial.result, trial.observed_output_bytes = "crash", 1, None, None
+    report.summary = summarize(report.problem_config, report.trials)
+    write_report(report, path)
+    submission = OptimizeOutput(report.problem, report.assessment_id, report.report_path)
+    verdict = verify_task("optimize-code", DescribeInput(report.problem), submission, None, str(root))
+    assert not verdict["valid"] and verdict["message"] == "execution_failure"
+    assert verdict["details"]["timings"][0]["candidate_ns"] is None
+
+
+@pytest.mark.parametrize("change", [
+    lambda report: report.update(schema_version=True),
+    lambda report: report["summary"].update(eligible="true"),
+    lambda report: report["trials"][0]["stdout"].update(size=False),
+    lambda report: report.pop("trials"),
+    lambda report: report.update(assessment_id="another"),
+    lambda report: report["summary"].update(suite_speedup=9999),
+])
+def test_submitted_report_cannot_invent_or_malform_evidence(tmp_path, change):
+    from contract import DescribeInput, OptimizeOutput
+    from verifier import verify_task
+
+    root, report, _, path = make_valid_assessment(tmp_path)
+    data = json.loads(path.read_text())
+    change(data)
+    path.write_text(json.dumps(data))
+    submission = OptimizeOutput(report.problem, report.assessment_id, report.report_path)
+    assert not verify_task("optimize-code", DescribeInput(report.problem), submission, None, str(root))["valid"]
+
+
+@pytest.mark.parametrize("kind", ["missing", "invalid-json", "symlink", "traversal", "oversize"])
+def test_submitted_report_requires_a_safe_present_artifact(tmp_path, kind):
+    from contract import DescribeInput, OptimizeOutput
+    from verifier import verify_task
+
+    root, report, _, path = make_valid_assessment(tmp_path)
+    submission = OptimizeOutput(report.problem, report.assessment_id, report.report_path)
+    if kind == "missing":
+        path.unlink()
+    elif kind == "invalid-json":
+        path.write_text("not a report")
+    elif kind == "symlink":
+        saved = tmp_path / "other.json"
+        path.rename(saved)
+        path.symlink_to(saved)
+    elif kind == "traversal":
+        submission.report_path = "../report.json"
+    elif kind == "oversize":
+        with path.open("wb") as stream:
+            stream.truncate(50 * 1024 * 1024 + 1)
+    assert not verify_task("optimize-code", DescribeInput(report.problem), submission, None, str(root))["valid"]
+
+
 def test_report_artifacts_hashes_schedule_and_json_are_bound(tmp_path):
     root, output, source, report_path = make_valid_assessment(tmp_path)
     assert validate_evaluation(output, root, source)[0]

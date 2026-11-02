@@ -37,7 +37,7 @@ function describe(value) {
   const config = value.problem_config;
   return h('section', {}, [
     h('h2', {text: config.id}),
-    h('p', {text: 'This is the problem description. Ask the agent to implement a faster solution and run evaluate-code to see baseline vs optimized timings.'}),
+    h('p', {text: 'Ask optimize-code to implement and benchmark a solution, then submit its report for automatic verification.'}),
     markdown(value.prompt),
     settings(config),
     h('p', {text: value.case_summaries.join(' · ')}),
@@ -90,4 +90,30 @@ function evaluate(value, {verdict}) {
   ]);
 }
 
-export default {ListProblemsOutput: list, DescribeOutput: describe, EvaluateOutput: evaluate};
+function optimize(value, {verdict}) {
+  if (!verdict) throw new Error('Optimization result has no verifier verdict');
+  const content = [
+    h('h2', {text: 'Baseline vs optimized code'}),
+    h('p', {class: 'verdict', text: `${verdict.valid ? 'Accepted' : 'Not accepted'} · ${verdict.message}`}),
+    h('p', {text: `Problem: ${value.problem.directory} · Assessment: ${value.assessment_id}`}),
+    h('p', {text: `Report: ${value.report_path}`}),
+  ];
+  if (Array.isArray(verdict.details.timings)) {
+    const time = ns => ns === null ? 'No successful measurements' : `${number(ns / 1e6)} ms`;
+    content.push(
+      h('p', {text: `Suite speedup ${number(verdict.details.speedup)}×`}),
+      h('div', {class: 'measurements', role: 'region', 'aria-label': 'Case measurements', tabindex: '0'}, [h('table', {}, [
+        h('caption', {text: 'Verified median elapsed times (warmups excluded)'}),
+        h('thead', {}, [h('tr', {}, ['Case', 'Exact output', 'Baseline time', 'Optimized time', 'Speedup'].map(text => h('th', {text})))]),
+        h('tbody', {}, verdict.details.timings.map(item => h('tr', {}, [
+          h('td', {text: item.case_id}), h('td', {text: item.outputs_match ? 'Match' : 'Failed'}),
+          h('td', {text: time(item.baseline_ns)}), h('td', {text: time(item.candidate_ns)}),
+          h('td', {text: `${number(item.speedup)}×`}),
+        ]))),
+      ])]),
+    );
+  }
+  return h('section', {}, content);
+}
+
+export default {ListProblemsOutput: list, DescribeOutput: describe, EvaluateOutput: evaluate, OptimizeOutput: optimize};

@@ -2,15 +2,64 @@
 
 import json
 import re
-from dataclasses import asdict
+from dataclasses import asdict, fields, is_dataclass
 from fractions import Fraction
 from hashlib import sha256
 from math import isfinite
 from pathlib import Path
+from typing import Annotated, get_args, get_origin
 
 from contract import BASELINE_PREPARE, EvaluateOutput
 
 from .statistics import summarize
+
+
+def _report_value(value, expected):
+    """Read persisted JSON under the report's declared contract, including nested values."""
+    origin, arguments = get_origin(expected), get_args(expected)
+    if origin is Annotated:
+        return _report_value(value, arguments[0])
+    if is_dataclass(expected):
+        declared = fields(expected)
+        if not isinstance(value, dict) or set(value) != {field.name for field in declared}:
+            raise ValueError("report fields do not match its contract")
+        return expected(**{field.name: _report_value(value[field.name], field.type) for field in declared})
+    if origin is list:
+        if not isinstance(value, list):
+            raise ValueError("report field must be a list")
+        return [_report_value(item, arguments[0]) for item in value]
+    if type(None) in arguments:
+        return None if value is None else _report_value(value, next(item for item in arguments if item is not type(None)))
+    if expected is float and type(value) in (int, float):
+        return value
+    if type(value) is not expected:
+        raise ValueError("report field does not match its declared type")
+    return value
+
+
+def load_evaluation(submission, workspace):
+    """Load exactly the submitted assessment, without following links outside its workspace."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", submission.assessment_id):
+        raise ValueError("assessment identifier is invalid")
+    if submission.report_path != f"assessments/{submission.assessment_id}/report.json":
+        raise ValueError("report path does not match the submitted assessment")
+    path = Path(workspace)
+    for part in Path(submission.report_path).parts:
+        path = path / part
+        if path.is_symlink():
+            raise ValueError("report path contains a symlink")
+    if path.lstat().st_mode & 0o170000 != 0o100000 or path.stat().st_size > 50 * 1024 * 1024:
+        raise ValueError("report is not a regular file within the supported size limit")
+    with path.open("rb") as stream:
+        data = stream.read(50 * 1024 * 1024 + 1)
+    if len(data) > 50 * 1024 * 1024:
+        raise ValueError("report exceeds the supported size limit")
+    report = _report_value(json.loads(data.decode("utf-8")), EvaluateOutput)
+    if (report.assessment_id, report.report_path, report.problem) != (
+        submission.assessment_id, submission.report_path, submission.problem
+    ):
+        raise ValueError("report does not match the submitted assessment")
+    return report
 
 
 def result(valid, message, *, score=None, **details):
