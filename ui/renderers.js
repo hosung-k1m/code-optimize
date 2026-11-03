@@ -11,8 +11,6 @@ const reasons = {
   incomplete_trials: 'Assessment incomplete',
 };
 
-const artifact = value => h('p', {text: `${value.path} · ${value.size} bytes · SHA-256 ${value.sha256}`});
-
 function list(value) {
   return h('section', {}, [
     h('h2', {text: 'Available optimization problems'}),
@@ -64,29 +62,22 @@ function evaluate(value, {verdict}) {
     h('td', {text: medianTime(value.trials, item.case_id, 'baseline')}),
     h('td', {text: medianTime(value.trials, item.case_id, 'candidate')}),
     h('td', {text: `${number(item.speedup)}×`}),
-    h('td', {text: number(item.baseline_relative_mad)}),
-    h('td', {text: number(item.candidate_relative_mad)}),
   ]));
   return h('section', {}, [
     h('h2', {text: 'Baseline vs optimized code'}),
     h('p', {class: 'verdict', text: `${summary.eligible ? 'Accepted' : 'Not accepted'} · ${reasons[summary.reason]}`}),
-    h('p', {text: `Problem: ${value.problem_config.id}`}),
-    h('p', {text: `Suite speedup ${number(summary.suite_speedup)}× · ${value.trials.length} guarded executions`}),
+    ...(verdict && !verdict.valid ? [h('p', {text: verdict.message})] : []),
+    h('p', {text: `Overall speedup: ${number(summary.suite_speedup)}×`}),
     h('div', {class: 'measurements', role: 'region', 'aria-label': 'Case measurements', tabindex: '0'}, [h('table', {}, [
       h('caption', {text: 'Median elapsed time of successful trials (warmups excluded)'}),
-      h('thead', {}, [h('tr', {}, ['Case', 'Exact output', 'Baseline time', 'Optimized time', 'Speedup', 'Baseline MAD', 'Optimized MAD'].map(text => h('th', {text})))]),
+      h('thead', {}, [h('tr', {}, ['Case', 'Output', 'Baseline', 'Optimized', 'Speedup'].map(text => h('th', {text})))]),
       h('tbody', {}, rows),
     ])]),
-    h('p', {text: 'Speedup is the median of paired baseline / optimized elapsed times; suite speedup is the geometric mean across cases. MAD reports timing variability.'}),
-    h('p', {text: `Wasmtime ${value.runtime.wasmtime_version} · Zig ${value.runtime.zig_version} · one WASI execution thread · ${value.runtime.wasi_memory_bytes} bytes linear memory · ${value.runtime.wasi_fuel} fuel units per trial`}),
-    h('p', {text: `Timing host: ${value.runtime.platform} ${value.runtime.architecture}. Runtime overhead is outside the guest memory cap.`}),
-    h('p', {text: `Report: ${value.report_path}`}),
-    artifact(value.candidate),
-    h('details', {}, [h('summary', {text: 'Build and dependency evidence'}), h('pre', {text: JSON.stringify(value.preparation, null, 2)})]),
-    settings(value.problem_config),
-    h('details', {}, [h('summary', {text: 'Runtime and available tools'}), h('pre', {text: JSON.stringify(value.runtime, null, 2)})]),
-    h('details', {}, [h('summary', {text: 'Trial evidence'}), h('pre', {text: JSON.stringify(value.trials, null, 2)})]),
-    ...(verdict ? [h('p', {text: verdict.message})] : []),
+    h('details', {}, [
+      h('summary', {text: 'Technical details'}),
+      h('p', {text: `Report: ${value.report_path}`}),
+      h('pre', {text: JSON.stringify({candidate: value.candidate, configuration: value.problem_config, runtime: value.runtime, preparation: value.preparation, trials: value.trials, cases: summary.cases}, null, 2)}),
+    ]),
   ]);
 }
 
@@ -95,16 +86,14 @@ function optimize(value, {verdict}) {
   const content = [
     h('h2', {text: 'Baseline vs optimized code'}),
     h('p', {class: 'verdict', text: `${verdict.valid ? 'Accepted' : 'Not accepted'} · ${verdict.message}`}),
-    h('p', {text: `Problem: ${value.problem.directory} · Assessment: ${value.assessment_id}`}),
-    h('p', {text: `Report: ${value.report_path}`}),
   ];
   if (Array.isArray(verdict.details.timings)) {
     const time = ns => ns === null ? 'No successful measurements' : `${number(ns / 1e6)} ms`;
     content.push(
-      h('p', {text: `Suite speedup ${number(verdict.details.speedup)}×`}),
+      h('p', {text: `Overall speedup: ${number(verdict.details.speedup)}×`}),
       h('div', {class: 'measurements', role: 'region', 'aria-label': 'Case measurements', tabindex: '0'}, [h('table', {}, [
         h('caption', {text: 'Verified median elapsed times (warmups excluded)'}),
-        h('thead', {}, [h('tr', {}, ['Case', 'Exact output', 'Baseline time', 'Optimized time', 'Speedup'].map(text => h('th', {text})))]),
+        h('thead', {}, [h('tr', {}, ['Case', 'Output', 'Baseline', 'Optimized', 'Speedup'].map(text => h('th', {text})))]),
         h('tbody', {}, verdict.details.timings.map(item => h('tr', {}, [
           h('td', {text: item.case_id}), h('td', {text: item.outputs_match ? 'Match' : 'Failed'}),
           h('td', {text: time(item.baseline_ns)}), h('td', {text: time(item.candidate_ns)}),
