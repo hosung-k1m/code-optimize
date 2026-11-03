@@ -34,12 +34,8 @@ function settings(config) {
 function describe(value) {
   const config = value.problem_config;
   return h('section', {}, [
-    h('h2', {text: config.id}),
-    h('p', {text: 'Ask optimize-code to implement and benchmark a solution, then submit its report for automatic verification.'}),
     markdown(value.prompt),
     settings(config),
-    h('p', {text: value.case_summaries.join(' · ')}),
-    h('p', {text: value.runtime.tools.join(' · ')}),
     h('details', {}, [h('summary', {text: 'Naive C++17 baseline'}), h('pre', {text: value.baseline_source})]),
   ]);
 }

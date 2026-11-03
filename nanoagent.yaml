@@ -1,7 +1,7 @@
 _ > nanoagent.plugin.v0001.ManifestConfig:
 id: code-optimize
 name: Code Optimize
-version: 0.4.2
+version: 0.4.3
 status: ready
 spec: nanoagent.plugin/v0001
 
@@ -34,11 +34,8 @@ tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
     instructions: *list_instructions
   describe-problem:
     description: &describe_instructions >-
-      Describe a listed problem and show its exact current WASI resource limits and
-      benchmark policy before coding. Default origin bundled, directory repeated-shortest-paths.
-      Execution uses one WASI thread, 2147483648 bytes of linear memory and 30000000000
-      instruction fuel units per trial. Build tools and Wasmtime ship in the plugin;
-      Docker and desktop changes are unnecessary. Candidates must compile to WASIp1.
+      Describe a listed problem and its WASI limits and benchmark policy before coding.
+      Default: bundled/repeated-shortest-paths. Candidates must compile to WASIp1.
     runner: tool
     tools: [describe_problem]
     reference: null
